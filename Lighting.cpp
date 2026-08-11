@@ -52,7 +52,7 @@ Lighting::Lighting()
     moon.setPosition({ 50.f, 180.f });
     moon.setPointCount(240);  // 默认较低，提高圆周精度
     moon.setFillColor(
-        sf::Color(255, 204, 66, 200 )
+        sf::Color(142, 22, 16, 255 )
     );
 }
 

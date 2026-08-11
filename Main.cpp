@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <iostream>
 #include <optional>
 
 #include "CameraController.hpp"
@@ -11,168 +12,125 @@
 #include "MusicRhythmEventBus.hpp"
 #include "PlayerAssets.hpp"
 #include "RhythmLine.hpp"
+#include "StageCutLight.hpp"
 
 int main()
 {
-    // =====================================================
-    // 1. 窗口设置
-    // =====================================================
-
     constexpr unsigned int windowWidth = 1280;
     constexpr unsigned int windowHeight = 720;
-
     constexpr float playerSpeed = 200.f;
     constexpr float playerScale = 0.15f;
-
-    constexpr float screenCenterX =
-        static_cast<float>(windowWidth) / 2.f;
-
-    constexpr float screenCenterY =
-        static_cast<float>(windowHeight) / 2.f;
+    constexpr float walkFrameDuration = 0.15f;
+    constexpr float lightPulseDecay = 3.f;
 
     sf::ContextSettings settings;
     settings.antiAliasingLevel = 8;
 
     sf::RenderWindow window(
-        sf::VideoMode({
-            windowWidth,
-            windowHeight
-            }),
-        "My Game",
+        sf::VideoMode({ windowWidth, windowHeight }),
+        "Shader Test - S: Shader  L: Darkness  Space: Pulse",
         sf::Style::Titlebar | sf::Style::Close,
         sf::State::Windowed,
         settings
     );
-
     window.setFramerateLimit(60);
 
-    // =====================================================
-    // 2. 加载玩家走路动画
-    // =====================================================
-
     PlayerTextures playerTextures;
-
     if (!loadWalkTextures(playerTextures) ||
         playerTextures.walkFrames.empty())
     {
+        std::cerr << "Failed to load player textures.\n";
         return 1;
     }
 
-    sf::Sprite playerSprite(
-        playerTextures.walkFrames[0]
-    );
-
-    playerSprite.setScale({
-        playerScale,
-        playerScale
-        });
-
-    playerSprite.setPosition({
-        100.f,
-        480.f
-        });
-
-    // =====================================================
-    // 3. 玩家动画设置
-    // =====================================================
+    sf::Sprite playerSprite(playerTextures.walkFrames[0]);
+    playerSprite.setScale({ playerScale, playerScale });
+    playerSprite.setPosition({ 100.f, 480.f });
 
     std::size_t walkFrameIndex = 0;
-
-    // 每张动画图片显示0.15秒
-    constexpr float walkFrameDuration = 0.15f;
-
     sf::Clock animationClock;
 
-    // =====================================================
-    // 4. 加载地图
-    // =====================================================
-
     Map gameMap;
-
     if (!gameMap.load())
     {
+        std::cerr << "Failed to load map.\n";
         return 1;
     }
-
-    // =====================================================
-    // 5. 加载光照
-    // =====================================================
 
     Lighting lighting;
-
     if (!lighting.load())
     {
+        std::cerr << "Failed to load lighting.\n";
         return 1;
     }
-
-    // =====================================================
-    // 6. 加载音乐和节奏事件
-    // =====================================================
 
     sf::Music backgroundMusic;
     MusicRhythmEventBus rhythmBus;
-
-    if (!initializeMusic(
-        backgroundMusic,
-        "Assets/Arts/Audio/1.ogg"))
+    if (!initializeMusic(backgroundMusic, "Assets/Arts/Audio/1.ogg"))
     {
+        std::cerr << "Failed to load background music.\n";
         return 1;
     }
-
     rhythmBus.reset();
 
-    // 如果 initializeMusic() 只负责加载音乐，
-    // 没有在函数内部播放音乐，则启用下一行：
-    // backgroundMusic.play();
-
-    // =====================================================
-    // 7. 创建节奏线和摄像机
-    // =====================================================
-
     RhythmLine rhythmLine;
-
     CameraController cameraController(
-        {
-            screenCenterX,
-            screenCenterY
-        },
-        {
-            static_cast<float>(windowWidth),
-            static_cast<float>(windowHeight)
-        }
-        );
+        { windowWidth / 2.f, windowHeight / 2.f },
+        { static_cast<float>(windowWidth),
+         static_cast<float>(windowHeight) }
+    );
 
-    // 摄像机和节奏线共同接收音乐段落事件
     rhythmBus.subscribe(
-        [&cameraController, &rhythmLine](
-            const MusicRhythmEvent& event)
+        [&cameraController](const MusicRhythmEvent& event)
         {
             cameraController.onMusicEvent(event);
-           
         }
     );
 
-    sf::Clock frameClock;
+    StageCutLight cutLight;
+    const bool cutLightLoaded = cutLight.load(
+        "Assets/Shaders/stage_cut_light.frag",
+        window.getSize()
+    );
 
-    // =====================================================
-    // 8. 游戏主循环
-    // =====================================================
+    std::cout << std::boolalpha
+        << "cutLightLoaded = " << cutLightLoaded << '\n';
+
+    if (!cutLightLoaded)
+    {
+        std::cerr << "Shader load/compile failed; normal map drawing will be used.\n";
+    }
+    else
+    {
+        cutLight.setCenter({ 0.6f, 0.52f });
+        cutLight.setAngleDegrees(-40.f);
+        cutLight.setWidth(0.2f);
+        cutLight.setEdgeSoftness(0.1f);
+        cutLight.setIntensity(0.92f);
+        cutLight.setBeatPulse(0.f);
+    }
+
+    bool shaderEnabled = cutLightLoaded;
+
+    // 测试时默认关闭黑暗遮罩，避免它盖住 Shader 效果。
+    bool darknessEnabled = false;
+    float lightPulse = 0.f;
+
+    std::cout << "S = toggle shader\n"
+        << "L = toggle darkness overlay\n"
+        << "Space = light pulse\n"
+        << "Escape = quit\n";
+
+    sf::Clock frameClock;
 
     while (window.isOpen())
     {
-        const float deltaTime =
-            frameClock.restart().asSeconds();
+        const float safeDeltaTime = std::min(
+            frameClock.restart().asSeconds(),
+            0.1f
+        );
 
-        // 避免卡顿后角色突然移动很远
-        const float safeDeltaTime =
-            std::min(deltaTime, 0.1f);
-
-        // -------------------------------------------------
-        // 8.1 处理窗口事件
-        // -------------------------------------------------
-
-        while (const std::optional event =
-            window.pollEvent())
+        while (const std::optional event = window.pollEvent())
         {
             if (event->is<sf::Event::Closed>())
             {
@@ -182,154 +140,129 @@ int main()
             if (const auto* keyPressed =
                 event->getIf<sf::Event::KeyPressed>())
             {
-                if (keyPressed->code ==
-                    sf::Keyboard::Key::Escape)
+                if (keyPressed->code == sf::Keyboard::Key::Escape)
                 {
                     window.close();
+                }
+                else if (keyPressed->code == sf::Keyboard::Key::Space)
+                {
+                    lightPulse = 1.f;
+                }
+                else if (keyPressed->code == sf::Keyboard::Key::S)
+                {
+                    if (cutLightLoaded)
+                    {
+                        shaderEnabled = !shaderEnabled;
+                        std::cout << "shaderEnabled = "
+                            << shaderEnabled << '\n';
+                    }
+                }
+                else if (keyPressed->code == sf::Keyboard::Key::L)
+                {
+                    darknessEnabled = !darknessEnabled;
+                    std::cout << "darknessEnabled = "
+                        << darknessEnabled << '\n';
                 }
             }
         }
 
-        // -------------------------------------------------
-        // 8.2 玩家自动向右移动
-        // -------------------------------------------------
+        lightPulse = std::max(
+            0.f,
+            lightPulse - safeDeltaTime * lightPulseDecay
+        );
 
-        const sf::Vector2f movement{
-            playerSpeed * safeDeltaTime,
-            0.f
-        };
+        if (cutLightLoaded)
+        {
+            cutLight.setBeatPulse(lightPulse);
+        }
 
-        playerSprite.move(movement);
+        playerSprite.move({ playerSpeed * safeDeltaTime, 0.f });
 
-        // -------------------------------------------------
-        // 8.3 在run1和run2之间循环切换
-        // -------------------------------------------------
-
-        if (animationClock
-            .getElapsedTime()
-            .asSeconds() >= walkFrameDuration)
+        if (animationClock.getElapsedTime().asSeconds() >=
+            walkFrameDuration)
         {
             walkFrameIndex =
-                (walkFrameIndex + 1) %
-                playerTextures.walkFrames.size();
-
+                (walkFrameIndex + 1) % playerTextures.walkFrames.size();
             playerSprite.setTexture(
-                playerTextures.walkFrames[
-                    walkFrameIndex
-                ],
+                playerTextures.walkFrames[walkFrameIndex],
                 true
             );
-
             animationClock.restart();
         }
 
-        // -------------------------------------------------
-        // 8.4 限制玩家左边界
-        // -------------------------------------------------
-
         if (playerSprite.getPosition().x < 0.f)
         {
-            playerSprite.setPosition({
-                0.f,
-                playerSprite.getPosition().y
-                });
+            playerSprite.setPosition({ 0.f, playerSprite.getPosition().y });
         }
-
-        // -------------------------------------------------
-        // 8.5 计算玩家中心位置
-        // -------------------------------------------------
 
         const sf::FloatRect playerBounds =
             playerSprite.getGlobalBounds();
-
         const sf::Vector2f playerCenter{
-            playerBounds.position.x +
-                playerBounds.size.x / 2.f,
-
-            playerBounds.position.y +
-                playerBounds.size.y / 2.f
+            playerBounds.position.x + playerBounds.size.x / 2.f,
+            playerBounds.position.y + playerBounds.size.y / 2.f
         };
 
-        // -------------------------------------------------
-        // 8.6 更新地图和光照
-        // -------------------------------------------------
-
         gameMap.update(playerCenter.x);
-
-        // 月亮和PNG光晕固定在屏幕上，
-        // 不再接收玩家位置
         lighting.update();
-
-        // -------------------------------------------------
-        // 8.7 更新音乐节奏事件
-        // -------------------------------------------------
-
         rhythmBus.update(backgroundMusic);
 
         const float musicTime =
-            backgroundMusic
-            .getPlayingOffset()
-            .asSeconds();
+            backgroundMusic.getPlayingOffset().asSeconds();
 
-        // 根据BPM和音乐播放位置更新四周节奏线
-        rhythmLine.update(
-            safeDeltaTime,
-            musicTime
-        );
-
-        // -------------------------------------------------
-        // 8.8 更新摄像机
-        // -------------------------------------------------
-
+        rhythmLine.update(safeDeltaTime, musicTime);
         cameraController.update(
             safeDeltaTime,
             musicTime,
             playerCenter
         );
 
-        const sf::View gameView =
-            cameraController.getView();
-
-        // -------------------------------------------------
-        // 8.9 绘制
-        // -------------------------------------------------
+        const sf::View gameView = cameraController.getView();
 
         window.clear(sf::Color::Black);
 
-        // -------------------------------------------------
-        // 先绘制固定在屏幕背景中的月亮和PNG光晕
-        // -------------------------------------------------
-        gameMap.drawSky(window);
+        // 先准备 Shader
+        sf::RenderStates cutLightStates =
+            sf::RenderStates::Default;
 
-        window.setView(
-            window.getDefaultView()
-        );
+        if (cutLightLoaded)
+        {
+            cutLightStates.shader = &cutLight.shader();
+        }
 
-        lighting.drawMoon(window);
-
-        // -------------------------------------------------
-        // 绘制游戏世界
-        // -------------------------------------------------
-
+        // 1. 天空：使用游戏视图并接受 Shader
         window.setView(gameView);
 
-        gameMap.draw(window);
+        if (shaderEnabled && cutLightLoaded)
+        {
+            gameMap.drawSky(window, cutLightStates);
+        }
+        else
+        {
+            gameMap.drawSky(window);
+        }
 
-        // 如果Lighting::draw()负责绘制黑暗遮罩，
-        // 则保留这个调用
-        lighting.draw(window);
+        // 2. 月亮：使用默认视图，固定在屏幕上，不接受 Shader
+        window.setView(window.getDefaultView());
+        lighting.drawMoon(window);
 
-        // 绘制玩家
+        // 3. 房屋：切回游戏视图并接受 Shader
+        // 房屋后绘制，因此可以遮挡月亮
+        window.setView(gameView);
+
+        if (shaderEnabled && cutLightLoaded)
+        {
+            gameMap.draw(window, cutLightStates);
+        }
+        else
+        {
+            gameMap.draw(window);
+        }
+
+        // 4. 玩家：使用游戏视图且不接受 Shader
         window.draw(playerSprite);
 
-        // -------------------------------------------------
-        // 最后绘制屏幕空间中的节奏线
-        // -------------------------------------------------
-
-        window.setView(
-            window.getDefaultView()
-        );
-
+        // 5. 节奏线：固定在屏幕上
+        window.setView(window.getDefaultView());
         rhythmLine.draw(window);
 
         window.display();

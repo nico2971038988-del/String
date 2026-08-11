@@ -150,6 +150,7 @@
     <ClCompile Include="MusicRhythmEventBus.cpp" />
     <ClCompile Include="PlayerAssets.cpp" />
     <ClCompile Include="RhythmLine.cpp" />
+    <ClCompile Include="StageCutLight.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CameraController.hpp" />
@@ -158,6 +159,10 @@
     <ClInclude Include="MusicRhythmEventBus.hpp" />
     <ClInclude Include="PlayerAssets.hpp" />
     <ClInclude Include="RhythmLine.hpp" />
+    <ClInclude Include="StageCutLight.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Assets\Shaders\stage_cut_light.frag" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
