@@ -1,0 +1,9 @@
+// Optional per-sprite mask shader. Useful when drawing a sprite directly into
+// a mask target: RGB is discarded; only the texture alpha is retained.
+uniform sampler2D texture;
+
+void main() {
+    float alpha = texture2D(texture, gl_TexCoord[0].xy).a * gl_Color.a;
+    gl_FragColor = vec4(1.0, 1.0, 1.0, alpha);
+}
+

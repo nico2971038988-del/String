@@ -7,6 +7,7 @@
 #include <optional>
 
 #include "CameraController.hpp"
+#include "EdgeJitterEffect.hpp"
 #include "Lighting.hpp"
 #include "Map.hpp"
 #include "MusicRhythmEventBus.hpp"
@@ -28,16 +29,14 @@ int main()
 
     sf::RenderWindow window(
         sf::VideoMode({ windowWidth, windowHeight }),
-        "Shader Test - S: Shader  L: Darkness  Space: Pulse",
+        "Rhythm Game - 0: Outline Mode",
         sf::Style::Titlebar | sf::Style::Close,
         sf::State::Windowed,
-        settings
-    );
+        settings);
     window.setFramerateLimit(60);
 
     PlayerTextures playerTextures;
-    if (!loadWalkTextures(playerTextures) ||
-        playerTextures.walkFrames.empty())
+    if (!loadWalkTextures(playerTextures) || playerTextures.walkFrames.empty())
     {
         std::cerr << "Failed to load player textures.\n";
         return 1;
@@ -76,31 +75,13 @@ int main()
     RhythmLine rhythmLine;
     CameraController cameraController(
         { windowWidth / 2.f, windowHeight / 2.f },
-        { static_cast<float>(windowWidth),
-         static_cast<float>(windowHeight) }
-    );
-
-    rhythmBus.subscribe(
-        [&cameraController](const MusicRhythmEvent& event)
-        {
-            cameraController.onMusicEvent(event);
-        }
-    );
+        { static_cast<float>(windowWidth), static_cast<float>(windowHeight) });
 
     StageCutLight cutLight;
     const bool cutLightLoaded = cutLight.load(
-        "Assets/Shaders/stage_cut_light.frag",
-        window.getSize()
-    );
+        "Assets/Shaders/stage_cut_light.frag", window.getSize());
 
-    std::cout << std::boolalpha
-        << "cutLightLoaded = " << cutLightLoaded << '\n';
-
-    if (!cutLightLoaded)
-    {
-        std::cerr << "Shader load/compile failed; normal map drawing will be used.\n";
-    }
-    else
+    if (cutLightLoaded)
     {
         cutLight.setCenter({ 0.6f, 0.52f });
         cutLight.setAngleDegrees(-40.f);
@@ -111,12 +92,48 @@ int main()
     }
 
     bool shaderEnabled = cutLightLoaded;
-
-    // 测试时默认关闭黑暗遮罩，避免它盖住 Shader 效果。
     bool darknessEnabled = false;
     float lightPulse = 0.f;
 
-    std::cout << "S = toggle shader\n"
+    EdgeJitterEffect edgeJitter;
+    const bool edgeJitterLoaded = edgeJitter.initialize(
+        window.getSize(), "Assets/Shaders/edge_jitter.frag");
+
+    if (edgeJitterLoaded)
+    {
+        edgeJitter.setStrength(1.0f);
+        edgeJitter.setSpeed(1.0f);
+        edgeJitter.setChromaticOffset(1.8f);
+        edgeJitter.setBurstAmount(1.0f);
+    }
+
+    // 镜头监听音乐时间轴事件。
+    rhythmBus.subscribe(
+        [&cameraController](const MusicRhythmEvent& event)
+        {
+            cameraController.onMusicEvent(event);
+        });
+
+    // Outline Mode 监听同一个音乐时间轴事件。
+    // 14.000f 的第一个事件被广播时，与镜头旋转同帧进入 Outline。
+    rhythmBus.subscribe(
+        [&gameMap, &edgeJitter, edgeJitterLoaded](
+            const MusicRhythmEvent& event)
+        {
+            (void)event;
+
+            const bool enteringOutline = !gameMap.isOutlineMode();
+            gameMap.setOutlineMode(true);
+
+            if (enteringOutline && edgeJitterLoaded)
+            {
+                edgeJitter.restartClock();
+            }
+        });
+
+    std::cout << std::boolalpha
+        << "0 = toggle normal/outline map\n"
+        << "S = toggle shader\n"
         << "L = toggle darkness overlay\n"
         << "Space = light pulse\n"
         << "Escape = quit\n";
@@ -125,10 +142,8 @@ int main()
 
     while (window.isOpen())
     {
-        const float safeDeltaTime = std::min(
-            frameClock.restart().asSeconds(),
-            0.1f
-        );
+        const float safeDeltaTime =
+            std::min(frameClock.restart().asSeconds(), 0.1f);
 
         while (const std::optional event = window.pollEvent())
         {
@@ -137,40 +152,41 @@ int main()
                 window.close();
             }
 
-            if (const auto* keyPressed =
-                event->getIf<sf::Event::KeyPressed>())
+            if (const auto* keyPressed = event->getIf<sf::Event::KeyPressed>())
             {
                 if (keyPressed->code == sf::Keyboard::Key::Escape)
                 {
                     window.close();
                 }
+                else if (keyPressed->code == sf::Keyboard::Key::Num0)
+                {
+                    gameMap.setOutlineMode(!gameMap.isOutlineMode());
+                    if (gameMap.isOutlineMode() && edgeJitterLoaded)
+                    {
+                        edgeJitter.restartClock();
+                    }
+                    std::cout << "outlineMode = "
+                        << gameMap.isOutlineMode() << '\n';
+                    shaderEnabled = !shaderEnabled;
+                }
                 else if (keyPressed->code == sf::Keyboard::Key::Space)
                 {
                     lightPulse = 1.f;
                 }
-                else if (keyPressed->code == sf::Keyboard::Key::S)
+                else if (keyPressed->code == sf::Keyboard::Key::S &&
+                    cutLightLoaded)
                 {
-                    if (cutLightLoaded)
-                    {
-                        shaderEnabled = !shaderEnabled;
-                        std::cout << "shaderEnabled = "
-                            << shaderEnabled << '\n';
-                    }
+                    shaderEnabled = !shaderEnabled;
                 }
                 else if (keyPressed->code == sf::Keyboard::Key::L)
                 {
                     darknessEnabled = !darknessEnabled;
-                    std::cout << "darknessEnabled = "
-                        << darknessEnabled << '\n';
                 }
             }
         }
 
         lightPulse = std::max(
-            0.f,
-            lightPulse - safeDeltaTime * lightPulseDecay
-        );
-
+            0.f, lightPulse - safeDeltaTime * lightPulseDecay);
         if (cutLightLoaded)
         {
             cutLight.setBeatPulse(lightPulse);
@@ -178,15 +194,11 @@ int main()
 
         playerSprite.move({ playerSpeed * safeDeltaTime, 0.f });
 
-        if (animationClock.getElapsedTime().asSeconds() >=
-            walkFrameDuration)
+        if (animationClock.getElapsedTime().asSeconds() >= walkFrameDuration)
         {
             walkFrameIndex =
                 (walkFrameIndex + 1) % playerTextures.walkFrames.size();
-            playerSprite.setTexture(
-                playerTextures.walkFrames[walkFrameIndex],
-                true
-            );
+            playerSprite.setTexture(playerTextures.walkFrames[walkFrameIndex], true);
             animationClock.restart();
         }
 
@@ -195,12 +207,10 @@ int main()
             playerSprite.setPosition({ 0.f, playerSprite.getPosition().y });
         }
 
-        const sf::FloatRect playerBounds =
-            playerSprite.getGlobalBounds();
+        const sf::FloatRect playerBounds = playerSprite.getGlobalBounds();
         const sf::Vector2f playerCenter{
             playerBounds.position.x + playerBounds.size.x / 2.f,
-            playerBounds.position.y + playerBounds.size.y / 2.f
-        };
+            playerBounds.position.y + playerBounds.size.y / 2.f };
 
         gameMap.update(playerCenter.x);
         lighting.update();
@@ -210,58 +220,64 @@ int main()
             backgroundMusic.getPlayingOffset().asSeconds();
 
         rhythmLine.update(safeDeltaTime, musicTime);
-        cameraController.update(
-            safeDeltaTime,
-            musicTime,
-            playerCenter
-        );
+        cameraController.update(safeDeltaTime, musicTime, playerCenter);
 
         const sf::View gameView = cameraController.getView();
-
         window.clear(sf::Color::Black);
 
-        // 先准备 Shader
-        sf::RenderStates cutLightStates =
-            sf::RenderStates::Default;
-
+        sf::RenderStates cutLightStates = sf::RenderStates::Default;
         if (cutLightLoaded)
         {
             cutLightStates.shader = &cutLight.shader();
         }
 
-        // 1. 天空：使用游戏视图并接受 Shader
-        window.setView(gameView);
-
-        if (shaderEnabled && cutLightLoaded)
+        // 普通天空只在普通模式下绘制。
+        if (!gameMap.isOutlineMode())
         {
-            gameMap.drawSky(window, cutLightStates);
-        }
-        else
-        {
-            gameMap.drawSky(window);
+            window.setView(gameView);
+            if (shaderEnabled && cutLightLoaded)
+            {
+                gameMap.drawSky(window, cutLightStates);
+            }
+            else
+            {
+                gameMap.drawSky(window);
+            }
         }
 
-        // 2. 月亮：使用默认视图，固定在屏幕上，不接受 Shader
+        // 月亮/红日永远先画，后续的普通或线框建筑会遮挡它。
         window.setView(window.getDefaultView());
         lighting.drawMoon(window);
 
-        // 3. 房屋：切回游戏视图并接受 Shader
-        // 房屋后绘制，因此可以遮挡月亮
-        window.setView(gameView);
-
-        if (shaderEnabled && cutLightLoaded)
+        // Outline Mode: 先把线框远景和近景画到透明效果层，
+        // 再通过 edge_jitter.frag 合成到主窗口。
+        if (gameMap.isOutlineMode() && edgeJitterLoaded)
         {
-            gameMap.draw(window, cutLightStates);
+            edgeJitter.beginFrame();
+            edgeJitter.layer().setView(gameView);
+            gameMap.draw(edgeJitter.layer());
+            edgeJitter.endFrame();
+
+            window.setView(window.getDefaultView());
+            edgeJitter.display(window);
         }
         else
         {
-            gameMap.draw(window);
+            // 普通模式，或抖动 shader 加载失败时的回退绘制。
+            window.setView(gameView);
+            if (!gameMap.isOutlineMode() && shaderEnabled && cutLightLoaded)
+            {
+                gameMap.draw(window, cutLightStates);
+            }
+            else
+            {
+                gameMap.draw(window);
+            }
         }
 
-        // 4. 玩家：使用游戏视图且不接受 Shader
+        window.setView(gameView);
         window.draw(playerSprite);
 
-        // 5. 节奏线：固定在屏幕上
         window.setView(window.getDefaultView());
         rhythmLine.draw(window);
 

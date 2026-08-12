@@ -144,24 +144,31 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="CameraController.cpp" />
+    <ClCompile Include="EdgeJitterEffect.cpp" />
     <ClCompile Include="Lighting.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="Map.cpp" />
     <ClCompile Include="MusicRhythmEventBus.cpp" />
+    <ClCompile Include="OutlineRenderer.cpp" />
     <ClCompile Include="PlayerAssets.cpp" />
     <ClCompile Include="RhythmLine.cpp" />
     <ClCompile Include="StageCutLight.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CameraController.hpp" />
+    <ClInclude Include="EdgeJitterEffect.hpp" />
     <ClInclude Include="Lighting.hpp" />
     <ClInclude Include="Map.hpp" />
     <ClInclude Include="MusicRhythmEventBus.hpp" />
+    <ClInclude Include="OutlineRenderer.hpp" />
     <ClInclude Include="PlayerAssets.hpp" />
     <ClInclude Include="RhythmLine.hpp" />
     <ClInclude Include="StageCutLight.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Assets\Shaders\alpha_mask.frag" />
+    <None Include="Assets\Shaders\mix_outline.frag" />
+    <None Include="Assets\Shaders\outer_contour.frag" />
     <None Include="Assets\Shaders\stage_cut_light.frag" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -39,6 +39,12 @@
     <ClCompile Include="StageCutLight.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="OutlineRenderer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="EdgeJitterEffect.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="PlayerAssets.hpp">
@@ -62,9 +68,24 @@
     <ClInclude Include="StageCutLight.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="OutlineRenderer.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="EdgeJitterEffect.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\Shaders\stage_cut_light.frag">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="Assets\Shaders\alpha_mask.frag">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="Assets\Shaders\mix_outline.frag">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="Assets\Shaders\outer_contour.frag">
       <Filter>资源文件</Filter>
     </None>
   </ItemGroup>

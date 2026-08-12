@@ -2,265 +2,204 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstddef>
 #include <iostream>
 
-// =============================================================
-// 加载地图纹理并创建平铺精灵
-// =============================================================
+namespace
+{
+    constexpr const char* SkyPath =
+        "Assets/Arts/Map/chinese_ancient_painting_sky_2073x758_seamless.png";
+    constexpr const char* FarPath =
+        "Assets/Arts/Map/chinese_distant_palace_mountains_forest_2073x758_seamless.png";
+    constexpr const char* ScenePath =
+        "Assets/Arts/Map/14.png";
+
+    // Change only these two paths if your outline PNG names are different.
+    constexpr const char* OutlineFarPath =
+        "Assets/Arts/Map/outline_far.png";
+    constexpr const char* OutlineScenePath =
+        "Assets/Arts/Map/outline_scene.png";
+}
 
 bool Map::load()
 {
-    // ---------------------------------------------------------
-    // 1. 加载天空层
-    // ---------------------------------------------------------
-
-    if (!skyTexture.loadFromFile(
-        "Assets/Arts/Map/"
-        "chinese_ancient_painting_sky_2073x758_seamless.png"))
+    if (!skyTexture.loadFromFile(SkyPath))
     {
-        std::cerr << "Failed to load sky texture.\n";
+        std::cerr << "Failed to load sky texture: " << SkyPath << '\n';
+        return false;
+    }
+    if (!farTexture.loadFromFile(FarPath))
+    {
+        std::cerr << "Failed to load far texture: " << FarPath << '\n';
+        return false;
+    }
+    if (!sceneTexture.loadFromFile(ScenePath))
+    {
+        std::cerr << "Failed to load scene texture: " << ScenePath << '\n';
+        return false;
+    }
+    if (!outlineFarTexture.loadFromFile(OutlineFarPath))
+    {
+        std::cerr << "Failed to load outline far texture: "
+            << OutlineFarPath << '\n';
+        return false;
+    }
+    if (!outlineSceneTexture.loadFromFile(OutlineScenePath))
+    {
+        std::cerr << "Failed to load outline scene texture: "
+            << OutlineScenePath << '\n';
         return false;
     }
 
-    // ---------------------------------------------------------
-    // 2. 加载远景层
-    // ---------------------------------------------------------
+    skyTileWidth = static_cast<float>(skyTexture.getSize().x);
+    farTileWidth = static_cast<float>(farTexture.getSize().x);
+    sceneTileWidth = static_cast<float>(sceneTexture.getSize().x);
+    outlineFarTileWidth =
+        static_cast<float>(outlineFarTexture.getSize().x);
+    outlineSceneTileWidth =
+        static_cast<float>(outlineSceneTexture.getSize().x);
 
-    if (!farTexture.loadFromFile(
-        "Assets/Arts/Map/"
-        "chinese_distant_palace_mountains_forest_2073x758_seamless.png"))
+    if (skyTileWidth <= 0.f || farTileWidth <= 0.f ||
+        sceneTileWidth <= 0.f || outlineFarTileWidth <= 0.f ||
+        outlineSceneTileWidth <= 0.f)
     {
-        std::cerr << "Failed to load far background texture.\n";
+        std::cerr << "One or more map textures have an invalid width.\n";
         return false;
     }
-
-    // ---------------------------------------------------------
-    // 3. 加载近景层
-    // ---------------------------------------------------------
-
-    if (!sceneTexture.loadFromFile(
-        "Assets/Arts/Map/14.png"))
-    {
-        std::cerr << "Failed to load scene texture.\n";
-        return false;
-    }
-
-    // ---------------------------------------------------------
-    // 4. 获取各层纹理宽度
-    // ---------------------------------------------------------
-
-    skyTileWidth =
-        static_cast<float>(
-            skyTexture.getSize().x
-            );
-
-    farTileWidth =
-        static_cast<float>(
-            farTexture.getSize().x
-            );
-
-    sceneTileWidth =
-        static_cast<float>(
-            sceneTexture.getSize().x
-            );
-
-    if (skyTileWidth <= 0.f ||
-        farTileWidth <= 0.f ||
-        sceneTileWidth <= 0.f)
-    {
-        std::cerr << "Invalid map texture width.\n";
-        return false;
-    }
-
-    // ---------------------------------------------------------
-    // 5. 清除旧精灵
-    // ---------------------------------------------------------
 
     skyTiles.clear();
     farTiles.clear();
     sceneTiles.clear();
+    outlineFarTiles.clear();
+    outlineSceneTiles.clear();
 
     skyTiles.reserve(tileCount);
     farTiles.reserve(tileCount);
     sceneTiles.reserve(tileCount);
-
-    // ---------------------------------------------------------
-    // 6. 创建循环平铺精灵
-    // ---------------------------------------------------------
+    outlineFarTiles.reserve(tileCount);
+    outlineSceneTiles.reserve(tileCount);
 
     for (std::size_t i = 0; i < tileCount; ++i)
     {
-        const float tileIndex =
-            static_cast<float>(i);
+        const float index = static_cast<float>(i);
 
-        // 天空层
         skyTiles.emplace_back(skyTexture);
+        skyTiles.back().setPosition({ index * skyTileWidth, skyMapY });
 
-        skyTiles.back().setPosition({
-            tileIndex * skyTileWidth,
-            skyMapY
-            });
-
-        // 远景层
         farTiles.emplace_back(farTexture);
+        farTiles.back().setPosition({ index * farTileWidth, farMapY });
 
-        farTiles.back().setPosition({
-            tileIndex * farTileWidth,
-            farMapY
-            });
-
-        // 近景层
         sceneTiles.emplace_back(sceneTexture);
+        sceneTiles.back().setPosition({ index * sceneTileWidth, sceneMapY });
 
-        sceneTiles.back().setPosition({
-            tileIndex * sceneTileWidth,
-            sceneMapY
-            });
+        outlineFarTiles.emplace_back(outlineFarTexture);
+        outlineFarTiles.back().setPosition(
+            { index * outlineFarTileWidth, farMapY });
+
+        outlineSceneTiles.emplace_back(outlineSceneTexture);
+        outlineSceneTiles.back().setPosition(
+            { index * outlineSceneTileWidth, sceneMapY });
     }
 
     return true;
 }
 
-// =============================================================
-// 根据摄像机位置更新远景和近景平铺
-// =============================================================
+void Map::setOutlineMode(bool enabled)
+{
+    outlineMode = enabled;
+}
+
+bool Map::isOutlineMode() const
+{
+    return outlineMode;
+}
 
 void Map::update(float cameraX)
 {
-    const float cameraLeft =
-        cameraX - windowWidth / 2.f;
+    const float cameraLeft = cameraX - windowWidth / 2.f;
+    const float cameraTravel = std::max(0.f, cameraLeft);
 
+    const auto updateWorldLayer = [cameraLeft](
+        std::vector<sf::Sprite>& tiles,
+        float tileWidth,
+        float y)
+        {
+            const int firstIndex =
+                static_cast<int>(std::floor(cameraLeft / tileWidth)) - 1;
 
-    const float cameraTravel =
-        std::max(
-            0.f,
-            cameraX - windowWidth / 2.f
-        );
+            for (std::size_t i = 0; i < tiles.size(); ++i)
+            {
+                const int tileIndex = firstIndex + static_cast<int>(i);
+                tiles[i].setPosition(
+                    { static_cast<float>(tileIndex) * tileWidth, y });
+            }
+        };
 
-    // =========================================================
-   // 1. 天空层循环平铺
-  // =========================================================
+    const auto updateFarLayer = [cameraTravel](
+        std::vector<sf::Sprite>& tiles,
+        float tileWidth,
+        float y)
+        {
+            const float farOffset = cameraTravel * farParallax;
+            const float farLayerLeft = cameraTravel - farOffset;
+            const int firstIndex =
+                static_cast<int>(std::floor(farOffset / tileWidth)) - 1;
 
-    const int firstSkyIndex =
-        static_cast<int>(
-            std::floor(cameraLeft / skyTileWidth)
-            ) - 1;
+            for (std::size_t i = 0; i < tiles.size(); ++i)
+            {
+                const int tileIndex = firstIndex + static_cast<int>(i);
+                tiles[i].setPosition(
+                    { farLayerLeft + static_cast<float>(tileIndex) * tileWidth, y });
+            }
+        };
 
-    for (std::size_t i = 0;
-        i < skyTiles.size();
-        ++i)
-    {
-        const int worldTileIndex =
-            firstSkyIndex +
-            static_cast<int>(i);
+    // Sky follows the existing world-view positioning in normal mode.
+    updateWorldLayer(skyTiles, skyTileWidth, skyMapY);
 
-        skyTiles[i].setPosition({
-            static_cast<float>(worldTileIndex) *
-                skyTileWidth,
-            skyMapY
-            });
-    }
-
-
-    // ---------------------------------------------------------
-    // 1. 更新近景层
-    // ---------------------------------------------------------
-
-  //  const float cameraLeft =
-  //      cameraX - windowWidth / 2.f;
-
-    const int firstSceneIndex =
-        static_cast<int>(
-            std::floor(
-                cameraLeft / sceneTileWidth
-            )
-            ) - 1;
-
-    for (std::size_t i = 0;
-        i < sceneTiles.size();
-        ++i)
-    {
-        const int worldTileIndex =
-            firstSceneIndex +
-            static_cast<int>(i);
-
-        sceneTiles[i].setPosition({
-            static_cast<float>(worldTileIndex) *
-                sceneTileWidth,
-            sceneMapY
-            });
-    }
-
-    // ---------------------------------------------------------
-    // 2. 更新远景视差层
-    // ---------------------------------------------------------
-
-    const float farOffset =
-        cameraTravel * farParallax;
-
-    const float farLayerLeft =
-        cameraTravel - farOffset;
-
-    const int firstFarIndex =
-        static_cast<int>(
-            std::floor(
-                farOffset / farTileWidth
-            )
-            ) - 1;
-
-    for (std::size_t i = 0;
-        i < farTiles.size();
-        ++i)
-    {
-        const int farTileIndex =
-            firstFarIndex +
-            static_cast<int>(i);
-
-        farTiles[i].setPosition({
-            farLayerLeft +
-                static_cast<float>(farTileIndex) *
-                    farTileWidth,
-            farMapY
-            });
-    }
-
-    // 天空层不在这里更新，保持原有屏幕位置。
+    // Normal and outline counterparts use the same movement formula.
+    updateFarLayer(farTiles, farTileWidth, farMapY);
+    updateFarLayer(outlineFarTiles, outlineFarTileWidth, farMapY);
+    updateWorldLayer(sceneTiles, sceneTileWidth, sceneMapY);
+    updateWorldLayer(outlineSceneTiles, outlineSceneTileWidth, sceneMapY);
 }
-
-// =============================================================
-// 绘制天空层
-// 天空不使用 StageCutLight Shader
-// =============================================================
 
 void Map::drawSky(
-    sf::RenderWindow& window,
+    sf::RenderTarget& target,
     const sf::RenderStates& states) const
 {
+    if (outlineMode)
+    {
+        return;
+    }
+
     for (const sf::Sprite& tile : skyTiles)
     {
-        window.draw(tile, states);
+        target.draw(tile, states);
     }
 }
 
-// =============================================================
-// 绘制远景和近景
-// states 中可以携带 StageCutLight Shader
-// =============================================================
-
 void Map::draw(
-    sf::RenderWindow& window,
+    sf::RenderTarget& target,
     const sf::RenderStates& states) const
 {
-    // 远景层使用传入的 Shader
-    for (const sf::Sprite& tile : farTiles)
+    if (outlineMode)
     {
-        window.draw(tile, states);
+        for (const sf::Sprite& tile : outlineFarTiles)
+        {
+            target.draw(tile, states);
+        }
+        for (const sf::Sprite& tile : outlineSceneTiles)
+        {
+            target.draw(tile, states);
+        }
+        return;
     }
 
-    // 近景层使用传入的 Shader
+    for (const sf::Sprite& tile : farTiles)
+    {
+        target.draw(tile, states);
+    }
     for (const sf::Sprite& tile : sceneTiles)
     {
-        window.draw(tile, states);
+        target.draw(tile, states);
     }
 }
