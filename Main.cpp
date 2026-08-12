@@ -109,26 +109,26 @@ int main()
 
     // 镜头监听音乐时间轴事件。
     rhythmBus.subscribe(
-        [&cameraController](const MusicRhythmEvent& event)
-        {
-            cameraController.onMusicEvent(event);
-        });
-
-    // Outline Mode 监听同一个音乐时间轴事件。
-    // 14.000f 的第一个事件被广播时，与镜头旋转同帧进入 Outline。
-    rhythmBus.subscribe(
-        [&gameMap, &edgeJitter, edgeJitterLoaded](
+        [&cameraController, &gameMap, &edgeJitter, edgeJitterLoaded](
             const MusicRhythmEvent& event)
         {
-            (void)event;
+            cameraController.onMusicEvent(event);
 
-            const bool enteringOutline = !gameMap.isOutlineMode();
-            gameMap.setOutlineMode(true);
+            // 每个事件都让镜头反转 180°，
+            // 因此每次事件都直接交替 Normal / Outline。
+            const bool enableOutline = !gameMap.isOutlineMode();
+            gameMap.setOutlineMode(enableOutline);
 
-            if (enteringOutline && edgeJitterLoaded)
+            if (enableOutline && edgeJitterLoaded)
             {
                 edgeJitter.restartClock();
             }
+
+            std::cout
+                << "outlineMode="
+                << std::boolalpha
+                << gameMap.isOutlineMode()
+                << '\n';
         });
 
     std::cout << std::boolalpha
