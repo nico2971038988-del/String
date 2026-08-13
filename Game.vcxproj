@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -153,6 +153,7 @@
     <ClCompile Include="PlayerAssets.cpp" />
     <ClCompile Include="RhythmLine.cpp" />
     <ClCompile Include="StageCutLight.cpp" />
+    <ClCompile Include="UI.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CameraController.hpp" />
@@ -164,6 +165,7 @@
     <ClInclude Include="PlayerAssets.hpp" />
     <ClInclude Include="RhythmLine.hpp" />
     <ClInclude Include="StageCutLight.hpp" />
+    <ClInclude Include="UI.hpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\Shaders\alpha_mask.frag" />

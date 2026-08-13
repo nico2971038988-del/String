@@ -1,42 +1,69 @@
-#pragma once
+ï»¿#pragma once
 
 #include <SFML/Graphics.hpp>
-
 #include <cstddef>
 #include <vector>
 
-// ¹ÜÀíÊ±¼äÖáÖĞµÄËùÓĞ½Ú×àÏß¡£
-// Í¬Ò»Ê±¿Ì¿ÉÒÔ´æÔÚ¶àÌõÏß£¬Ã¿¸öÊÂ¼şÖ»´¥·¢Ò»´Î¡£
+enum class HitResult {
+    None,
+    Perfect,
+    Great,
+    Miss
+};
+
 class RhythmLine
 {
 public:
     RhythmLine() = default;
 
-    void update(float deltaTime, float musicTimeSeconds);
-    void draw(sf::RenderWindow& window) const;
-
-    // ÖØĞÂ²¥·ÅÒôÀÖ»òÖ÷¶¯ÖØÖÃ¹Ø¿¨Ê±µ÷ÓÃ¡£
-    void reset();
-
-private:
-    struct ActiveLine
-    {
-        sf::Vector2f start{};
-        sf::Vector2f direction{};
-
-        float currentLength = 0.f;
-        float maximumLength = 0.f;
-        float growthSpeed = 0.f;
-        float elapsedTime = 0.f;
-        float duration = 0.f;
-        float thickness = 1.f;
-
-        sf::Color color = sf::Color::White;
+    struct LineEvent {
+        float startTime;
+        float endTime;
+        sf::Vector2f startPos, endPos;
+        float startAngle, endAngle;
+        float startAlpha, endAlpha;
     };
 
-    void createLine(std::size_t eventIndex, float initialElapsedTime = 0.f);
+    void update(float deltaTime, float musicTimeSeconds);
+    void draw(sf::RenderWindow& window) const;
+    void reset();
 
-    std::vector<ActiveLine> activeLines_;
+    HitResult onPlayerPressSpace();
+
+private:
+    struct ActiveNote
+    {
+        float hitTime = 0.f;
+        float travelDuration = 1.0f;
+        float spawnTime = 0.f;
+        float size = 20.f;
+        int lineIndex = 0;
+        float positionOnLine = 0.f;
+        bool isHit = false;
+    };
+
+    struct HitEffect {
+        sf::Vector2f pos;
+        float angle;
+        float lifetime = 0.3f;
+        float maxLifetime = 0.3f;
+    };
+
+    struct DynamicLine {
+        sf::Vector2f currentPos{ 640.f, 410.f };
+        float currentAngle = 0.f;
+        float currentAlpha = 220.f;
+        float hitPulse = 0.f;
+    };
+
+    void createNote(std::size_t eventIndex);
+    float easeInOutCubic(float t) const;
+
+    std::vector<ActiveNote> activeNotes_;
+    std::vector<HitEffect> hitEffects_;
+    std::vector<DynamicLine> lines_;
+
     std::size_t nextEventIndex_ = 0;
-    float previousMusicTime_ = 0.f;
+    float currentMusicTime_ = 0.f;
+    float globalSceneGlow_ = 0.f; // ğŸŒŸ åœºæ™¯å…¨å±€å…‰ç…§è”åŠ¨ç³»æ•°
 };

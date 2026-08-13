@@ -1,7 +1,8 @@
-#include "RhythmLine.hpp"
+ï»¿#include "RhythmLine.hpp"
+
 
 #include <algorithm>
-#include <array>
+#include <vector>
 #include <cmath>
 #include <cstdint>
 
@@ -10,241 +11,457 @@ namespace
     constexpr float Pi = 3.14159265358979323846f;
     constexpr float ScreenWidth = 1280.f;
     constexpr float ScreenHeight = 720.f;
-    constexpr float HorizontalLineY = ScreenHeight / 2.f;
-    constexpr float VerticalLineX = ScreenWidth / 2.f;
-    constexpr float HorizontalLineLength = ScreenWidth;
-    constexpr float VerticalLineLength = ScreenHeight;
-    constexpr float OutlinePadding = 1.5f;
-    constexpr sf::Color OutlineColor{ 70, 45, 35, 210 };
 
-    enum class ScreenSide
-    {
-        Left,
-        Right,
-        Top,
-        Bottom
+    // ğŸŒŸ åˆ¤å®šçº¿é»˜è®¤åŸºå‡†ç‚¹ï¼šå±å¹•åº•éƒ¨
+    const sf::Vector2f BottomCenter{ ScreenWidth / 2.f, ScreenHeight - 100.f };
+
+    struct NoteEvent {
+        float hitTime;
+        int lineIndex;        // 0: ä¸»çº¿, 1: å‰¯çº¿
+        float positionOnLine; // -0.8(æœ€å·¦) ~ 0.8(æœ€å³)
     };
 
-    struct RhythmLineEvent
-    {
-        float time;
-        ScreenSide side;
-        float position;       // ×óÓÒÏßÊ¹ÓÃ Y£¬ÉÏÏÂÏßÊ¹ÓÃ X
-        float angleOffset;    // Ïà¶ÔÄ¬ÈÏ·½ÏòµÄ½Ç¶ÈÆ«ÒÆ
-        float length;
-        float growthSpeed;
-        float thickness;
-        float duration;
-        sf::Color color;
+    // =================================================================
+    // ğŸµ 211 ç§’ï¼ˆ3åˆ†31ç§’ï¼‰çœŸæ­£çš„å…¨æ›²å®Œæ•´è°±é¢
+    // =================================================================
+    const std::vector<NoteEvent> Timeline = {
+        // --- 1. Intro å‰å¥ (0s - 14s) ---
+        { 2.00f, 0,  0.0f }, { 4.00f, 0, -0.4f }, { 6.00f, 0,  0.4f },
+        { 8.00f, 0, -0.2f }, { 9.50f, 0,  0.2f }, { 11.00f, 0, -0.5f }, { 12.50f, 0,  0.5f },
+
+        // --- 2. Melody æ—‹å¾‹è¿›åœº (14s - 28s) ---
+        { 14.00f, 0,  0.0f }, { 14.75f, 0, -0.3f }, { 15.50f, 0,  0.3f }, { 17.00f, 0, -0.5f },
+        { 18.50f, 0,  0.5f }, { 20.00f, 0, -0.2f }, { 20.75f, 0,  0.2f }, { 21.50f, 0, -0.4f },
+        { 23.00f, 0,  0.4f }, { 24.50f, 0, -0.6f }, { 26.00f, 0,  0.0f }, { 27.00f, 0,  0.6f },
+
+        // --- 3. BuildUp 1 (28s - 34s) ---
+        { 28.00f, 0, -0.4f }, { 28.50f, 0, -0.2f }, { 29.00f, 0,  0.0f }, { 29.50f, 0,  0.2f },
+        { 30.00f, 0,  0.4f }, { 30.33f, 0, -0.3f }, { 30.66f, 0,  0.0f }, { 31.00f, 0,  0.3f },
+        { 31.25f, 0, -0.5f }, { 31.50f, 0, -0.2f }, { 31.75f, 0,  0.2f }, { 32.00f, 0,  0.5f },
+        { 32.50f, 0, -0.6f }, { 32.75f, 0, -0.3f }, { 33.00f, 0,  0.3f }, { 33.25f, 0,  0.6f },
+
+        // --- 4. ğŸ’¥ FIRST DROP (34s - 50s) ---
+        { 34.00f, 0, -0.5f }, { 34.00f, 0,  0.5f }, { 34.50f, 0, -0.2f }, { 34.75f, 0,  0.2f },
+        { 35.50f, 0, -0.6f }, { 36.00f, 1,  0.0f }, { 36.50f, 0,  0.4f }, { 37.00f, 0, -0.4f },
+        { 37.50f, 1, -0.3f }, { 37.50f, 1,  0.3f }, { 38.25f, 0,  0.0f }, { 39.00f, 0, -0.7f },
+        { 39.00f, 0,  0.7f }, { 40.00f, 0, -0.3f }, { 40.33f, 0,  0.0f }, { 40.66f, 0,  0.3f },
+        { 41.50f, 1, -0.5f }, { 42.00f, 1,  0.5f }, { 42.50f, 0, -0.2f }, { 42.75f, 0,  0.2f },
+        { 43.50f, 0, -0.6f }, { 43.50f, 1,  0.6f }, { 44.25f, 0,  0.0f }, { 45.00f, 0, -0.4f },
+        { 45.50f, 0,  0.4f }, { 46.25f, 1,  0.0f }, { 47.00f, 0, -0.5f }, { 47.00f, 0,  0.5f },
+        { 48.00f, 0, -0.2f }, { 48.50f, 0,  0.2f }, { 49.25f, 0,  0.0f },
+
+        // --- 5. Break 1 (50s - 66s) ---
+        { 51.00f, 0, -0.3f }, { 53.00f, 0,  0.3f }, { 55.00f, 0, -0.5f }, { 57.00f, 0,  0.5f },
+        { 59.00f, 0, -0.2f }, { 61.00f, 0,  0.2f }, { 63.00f, 0,  0.0f }, { 65.00f, 0, -0.4f },
+
+        // --- 6. BuildUp 2 (66s - 72s) ---
+        { 66.00f, 0,  0.4f }, { 67.00f, 0, -0.3f }, { 68.00f, 0,  0.3f }, { 69.00f, 0, -0.5f },
+        { 70.00f, 0,  0.5f }, { 70.66f, 0,  0.2f }, { 71.25f, 0, -0.3f }, { 71.75f, 0,  0.6f },
+
+        // --- 7. ğŸ’¥ SECOND DROP (72s - 88s) ---
+        { 72.00f, 0, -0.6f }, { 72.00f, 0,  0.6f }, { 72.50f, 1, -0.3f }, { 72.75f, 1,  0.3f },
+        { 73.50f, 0,  0.0f }, { 74.00f, 0, -0.5f }, { 74.50f, 0,  0.5f }, { 75.25f, 1,  0.0f },
+        { 76.00f, 0, -0.4f }, { 76.00f, 1,  0.4f }, { 77.00f, 0, -0.2f }, { 77.66f, 0,  0.2f },
+        { 78.50f, 0, -0.7f }, { 78.50f, 0,  0.7f }, { 80.00f, 1, -0.4f }, { 80.50f, 1,  0.4f },
+        { 81.25f, 0,  0.0f }, { 82.00f, 0, -0.3f }, { 82.50f, 0,  0.3f }, { 83.25f, 1, -0.5f },
+        { 84.00f, 0, -0.6f }, { 84.50f, 0,  0.6f }, { 86.00f, 0, -0.4f }, { 87.25f, 0,  0.0f },
+
+        // --- 8. Bridge æ¡¥æ®µå˜å¥ (88s - 128s) ğŸ¹ æƒ…ç»ªæ²‰æ·€ä¸é•¿çº¿è¿‡æ¸¡ ---
+        { 88.50f, 0, -0.2f }, { 90.00f, 0,  0.2f }, { 92.00f, 0, -0.4f }, { 94.00f, 0,  0.4f },
+        { 96.00f, 0, -0.3f }, { 98.00f, 0,  0.3f }, { 100.00f, 0, -0.5f }, { 102.00f, 0,  0.5f },
+        { 104.00f, 0, -0.2f }, { 106.00f, 0,  0.2f }, { 108.00f, 0, -0.4f }, { 110.00f, 0,  0.4f },
+        { 112.00f, 0, -0.3f }, { 114.00f, 0,  0.3f }, { 116.00f, 0, -0.5f }, { 118.00f, 0,  0.5f },
+        { 120.00f, 0, -0.2f }, { 122.00f, 0,  0.2f }, { 124.00f, 0, -0.4f }, { 126.00f, 0,  0.4f },
+
+        // --- 9. BuildUp 3 ç¬¬ä¸‰æ¬¡æé€Ÿä¸Šå‡ (128s - 134s) ---
+        { 128.00f, 0, -0.4f }, { 128.50f, 0, -0.2f }, { 129.00f, 0,  0.0f }, { 129.50f, 0,  0.2f },
+        { 130.00f, 0,  0.4f }, { 130.33f, 0, -0.3f }, { 130.66f, 0,  0.0f }, { 131.00f, 0,  0.3f },
+        { 131.25f, 0, -0.5f }, { 131.50f, 0, -0.2f }, { 131.75f, 0,  0.2f }, { 132.00f, 0,  0.5f },
+        { 132.50f, 0, -0.6f }, { 132.75f, 0, -0.3f }, { 133.00f, 0,  0.3f }, { 133.25f, 0,  0.6f },
+        { 133.50f, 0,  0.0f }, { 133.75f, 0,  0.0f },
+
+        // --- 10. ğŸ’¥ğŸ’¥ FINAL DROP ç»ˆæçˆ†å‘æ®µ (134s - 166s) å…¨æ›²æœ€é«˜é«˜æ½®ï¼ ---
+        { 134.00f, 0, -0.6f }, { 134.00f, 1,  0.6f }, // è·¨çº¿åŒæ‰“ï¼
+        { 134.50f, 0, -0.3f }, { 134.75f, 0,  0.3f },
+        { 135.50f, 1, -0.5f }, { 136.00f, 0,  0.0f },
+        { 136.50f, 0,  0.4f }, { 137.00f, 1, -0.4f },
+        { 137.50f, 0, -0.3f }, { 137.50f, 1,  0.3f },
+        { 138.25f, 0,  0.0f }, { 139.00f, 0, -0.7f }, { 139.00f, 1,  0.7f },
+        { 140.00f, 0, -0.3f }, { 140.33f, 0,  0.0f }, { 140.66f, 0,  0.3f },
+        { 141.50f, 1, -0.5f }, { 142.00f, 0,  0.5f },
+        { 142.50f, 0, -0.2f }, { 142.75f, 1,  0.2f },
+        { 143.50f, 0, -0.6f }, { 143.50f, 1,  0.6f },
+        { 144.25f, 0,  0.0f }, { 145.00f, 0, -0.4f },
+        { 145.50f, 1,  0.4f }, { 146.25f, 0,  0.0f },
+        { 147.00f, 0, -0.5f }, { 147.00f, 1,  0.5f },
+        { 148.00f, 0, -0.2f }, { 148.50f, 0,  0.2f },
+        { 149.25f, 1,  0.0f },
+
+        // Final Drop ç¬¬äºŒå°èŠ‚ (150s - 166s)
+        { 150.00f, 0, -0.6f }, { 150.00f, 0,  0.6f },
+        { 150.50f, 1, -0.3f }, { 150.75f, 1,  0.3f },
+        { 151.50f, 0,  0.0f }, { 152.00f, 0, -0.5f },
+        { 152.50f, 0,  0.5f }, { 153.25f, 1,  0.0f },
+        { 154.00f, 0, -0.4f }, { 154.00f, 1,  0.4f },
+        { 155.00f, 0, -0.2f }, { 155.33f, 0,  0.0f }, { 155.66f, 0,  0.2f },
+        { 156.50f, 0, -0.7f }, { 156.50f, 1,  0.7f },
+        { 158.00f, 1, -0.4f }, { 158.50f, 1,  0.4f },
+        { 159.25f, 0,  0.0f }, { 160.00f, 0, -0.3f },
+        { 160.50f, 0,  0.3f }, { 161.25f, 1, -0.5f }, { 161.25f, 1,  0.5f },
+        { 162.00f, 0, -0.6f }, { 162.50f, 0,  0.6f },
+        { 163.25f, 0,  0.0f }, { 164.00f, 0, -0.4f },
+        { 164.50f, 0,  0.4f }, { 165.25f, 0,  0.0f },
+
+        // --- 11. Long Outro (166s - 211s) 3åˆ†31ç§’å®Œæ•´æ”¶å°¾ ---
+        { 166.50f, 0, -0.2f }, { 168.00f, 0,  0.2f }, { 170.00f, 0, -0.4f }, { 172.00f, 0,  0.4f },
+        { 174.00f, 0, -0.3f }, { 176.00f, 0,  0.3f }, { 178.00f, 0, -0.5f }, { 180.00f, 0,  0.5f },
+        { 183.00f, 0, -0.2f }, { 186.00f, 0,  0.2f }, { 189.00f, 0, -0.4f }, { 192.00f, 0,  0.4f },
+        { 195.00f, 0, -0.2f }, { 198.00f, 0,  0.2f }, { 202.00f, 0,  0.0f },
+        { 206.00f, 0,  0.0f },
+        { 210.00f, 0,  0.0f }  // 210s æœ€åä¸€å‡»å®šéŸ³ï¼
     };
 
-    // ±ØĞë°´³öÏÖÊ±¼ä´ÓĞ¡µ½´óÅÅÁĞ£»ÏàÍ¬Ê±¼äµÄÊÂ¼ş»áÔÚÍ¬Ò»Ö¡È«²¿´´½¨¡£
-    constexpr std::array RhythmTimeline{
-        RhythmLineEvent{
-            1.00f,
-            ScreenSide::Left,
-            HorizontalLineY - 270.f, // Y=90£¬´¦ÓÚÆÁÄ»ÉÏ·½
-            0.f,
-            HorizontalLineLength,
-            1000.f,
-            3.f,
-            120.f,
-            sf::Color(245, 205, 125, 255)
-        },
-        RhythmLineEvent{
-            2.00f,
-            ScreenSide::Right,
-            HorizontalLineY + 270.f, // Y=630£¬´¦ÓÚÆÁÄ»ÏÂ·½
-            0.f,
-            HorizontalLineLength,
-            1000.f,
-            3.f,
-            120.f,
-            sf::Color(245, 205, 125, 255)
-        },
-        RhythmLineEvent{
-            3.00f,
-            ScreenSide::Bottom,
-            VerticalLineX + 600.f, // X=1240£¬¿¿½üÆÁÄ»ÓÒ²à
-            0.f,
-            VerticalLineLength,
-            2000.f,
-            3.f,
-            100.f,
-            sf::Color(245, 205, 125, 255)
-        },
-        RhythmLineEvent{
-            3.00f,
-            ScreenSide::Top,
-            VerticalLineX - 600.f, // X=1240£¬¿¿½üÆÁÄ»ÓÒ²à
-            0.f,
-            VerticalLineLength,
-            2000.f,
-            3.f,
-            100.f,
-            sf::Color(245, 205, 125, 255)
-        }
+    // =================================================================
+    // ğŸ’ƒ 3åˆ†31ç§’ï¼ˆ211ç§’ï¼‰å…¨æ›²åˆ¤å®šçº¿èˆæ­¥åŠ¨ç”»
+    // =================================================================
+    const std::vector<RhythmLine::LineEvent> Line0Events = {
+        { 0.0f, 3.0f, BottomCenter, BottomCenter, 0.f, 0.f, 0.f, 255.f },
+        { 14.0f, 20.0f, BottomCenter, BottomCenter, 0.f, -8.f, 255.f, 255.f },
+        { 20.0f, 28.0f, BottomCenter, BottomCenter, -8.f, 8.f, 255.f, 255.f },
+        { 28.0f, 34.0f, BottomCenter, { BottomCenter.x, BottomCenter.y - 70.f }, 8.f, 0.f, 255.f, 255.f },
+        // Drop 1
+        { 34.0f, 40.0f, { BottomCenter.x, BottomCenter.y - 70.f }, { BottomCenter.x, BottomCenter.y - 40.f }, 0.f, -20.f, 255.f, 255.f },
+        { 40.0f, 50.0f, { BottomCenter.x, BottomCenter.y - 40.f }, BottomCenter, -20.f, 0.f, 255.f, 255.f },
+        // Bridge 1
+        { 50.0f, 66.0f, BottomCenter, BottomCenter, 0.f, 0.f, 255.f, 200.f },
+        { 66.0f, 72.0f, BottomCenter, { BottomCenter.x, BottomCenter.y - 80.f }, 0.f, -15.f, 200.f, 255.f },
+        // Drop 2
+        { 72.0f, 88.0f, { BottomCenter.x, BottomCenter.y - 80.f }, BottomCenter, -15.f, 0.f, 255.f, 255.f },
+        // Bridge 2
+        { 88.0f, 128.0f, BottomCenter, BottomCenter, 0.f, 0.f, 255.f, 180.f },
+        { 128.0f, 134.0f, BottomCenter, { BottomCenter.x, BottomCenter.y - 90.f }, 0.f, -25.f, 180.f, 255.f },
+        // ğŸ’¥ FINAL DROP (134s - 166s) åˆ¤å®šçº¿å¤§å¹…è·³è·ƒæ—‹è½¬
+        { 134.0f, 150.0f, { BottomCenter.x, BottomCenter.y - 90.f }, { BottomCenter.x, BottomCenter.y - 50.f }, -25.f, 35.f, 255.f, 255.f },
+        { 150.0f, 166.0f, { BottomCenter.x, BottomCenter.y - 50.f }, BottomCenter, 35.f, 0.f, 255.f, 255.f },
+        // Long Outro
+        { 166.0f, 200.0f, BottomCenter, BottomCenter, 0.f, 0.f, 255.f, 150.f },
+        { 200.0f, 211.0f, BottomCenter, BottomCenter, 0.f, 0.f, 150.f, 0.f }
     };
 
-    sf::Vector2f directionFromAngle(ScreenSide side, float angleOffset)
-    {
-        float baseAngle = 0.f;
-
-        switch (side)
-        {
-        case ScreenSide::Left:   baseAngle = 0.f;   break;
-        case ScreenSide::Right:  baseAngle = 180.f; break;
-        case ScreenSide::Top:    baseAngle = 90.f;  break;
-        case ScreenSide::Bottom: baseAngle = -90.f; break;
-        }
-
-        const float radians = (baseAngle + angleOffset) * Pi / 180.f;
-        return { std::cos(radians), std::sin(radians) };
-    }
-
-    sf::Vector2f startPosition(ScreenSide side, float position)
-    {
-        switch (side)
-        {
-        case ScreenSide::Left:   return { 0.f, position };
-        case ScreenSide::Right:  return { ScreenWidth, position };
-        case ScreenSide::Top:    return { position, 0.f };
-        case ScreenSide::Bottom: return { position, ScreenHeight };
-        }
-
-        return {};
-    }
+    const std::vector<RhythmLine::LineEvent> Line1Events = {
+        { 0.0f, 34.0f, BottomCenter, BottomCenter, 0.f, 0.f, 0.f, 0.f },
+        // Drop 1 å‡ºç°
+        { 34.0f, 48.0f, { BottomCenter.x, BottomCenter.y - 100.f }, { BottomCenter.x, BottomCenter.y - 80.f }, 45.f, 90.f, 0.f, 220.f },
+        { 48.0f, 50.0f, { BottomCenter.x, BottomCenter.y - 80.f }, BottomCenter, 90.f, 0.f, 220.f, 0.f },
+        { 50.0f, 72.0f, BottomCenter, BottomCenter, 0.f, 0.f, 0.f, 0.f },
+        // Drop 2 å‡ºç°
+        { 72.0f, 86.0f, { BottomCenter.x + 80.f, BottomCenter.y - 90.f }, BottomCenter, -45.f, 0.f, 0.f, 255.f },
+        { 86.0f, 134.0f, BottomCenter, BottomCenter, 0.f, 0.f, 0.f, 0.f },
+        // ğŸ’¥ FINAL DROP å†æ¬¡éœ‡æ’¼å…¥åœº (134s - 166s)
+        { 134.0f, 164.0f, { BottomCenter.x - 100.f, BottomCenter.y - 100.f }, BottomCenter, 60.f, 0.f, 0.f, 255.f },
+        { 164.0f, 211.0f, BottomCenter, BottomCenter, 0.f, 0.f, 255.f, 0.f }
+    };
 } // namespace
+float RhythmLine::easeInOutCubic(float t) const
+{
+    return t < 0.5f ? 4.f * t * t * t : 1.f - std::pow(-2.f * t + 2.f, 3.f) / 2.f;
+}
 
 void RhythmLine::reset()
 {
-    activeLines_.clear();
+    activeNotes_.clear();
+    hitEffects_.clear();
     nextEventIndex_ = 0;
-    previousMusicTime_ = 0.f;
+    currentMusicTime_ = 0.f;
+    globalSceneGlow_ = 0.f;
+    lines_.assign(2, DynamicLine{});
 }
 
 void RhythmLine::update(float deltaTime, float musicTimeSeconds)
 {
-    deltaTime = std::max(deltaTime, 0.f);
-    musicTimeSeconds = std::max(musicTimeSeconds, 0.f);
+    currentMusicTime_ = std::max(musicTimeSeconds, 0.f);
 
-    // ÒôÀÖ»ØÍË»òÖØĞÂ²¥·ÅÊ±£¬Çå¿Õ¾ÉÊµÀı²¢°´ĞÂÊ±¼äÖØĞÂ½¨Á¢×´Ì¬¡£
-    if (musicTimeSeconds < previousMusicTime_)
-    {
-        reset();
-    }
+    if (lines_.size() < 2) lines_.resize(2);
 
-    // while »á´´½¨ËùÓĞÒÑ¾­µ½µãµÄÊÂ¼ş£¬°üÀ¨¶à¸öÏàÍ¬Ê±¼äµÄÊÂ¼ş¡£
-    while (nextEventIndex_ < RhythmTimeline.size() &&
-        musicTimeSeconds >= RhythmTimeline[nextEventIndex_].time)
-    {
-        const auto& event = RhythmTimeline[nextEventIndex_];
-        const float elapsedSinceEvent = musicTimeSeconds - event.time;
-
-        // Ìø×ªÒôÀÖÎ»ÖÃÊ±£¬Ö»ÖØ½¨ÈÔ´¦ÓÚÓĞĞ§ÆÚÄÚµÄÏß¡£
-        if (elapsedSinceEvent < event.duration)
+    // 1. æ›´æ–°åˆ¤å®šçº¿ç¼–èˆåŠ¨ç”»
+    auto updateLineAnim = [this](int lineIdx, const std::vector<LineEvent>& events) {
+        for (const auto& ev : events)
         {
-            createLine(nextEventIndex_, elapsedSinceEvent);
-        }
-
-        ++nextEventIndex_;
-    }
-
-    for (ActiveLine& line : activeLines_)
-    {
-        line.elapsedTime += deltaTime;
-        line.currentLength = std::min(
-            line.maximumLength,
-            line.currentLength + line.growthSpeed * deltaTime);
-    }
-
-    activeLines_.erase(
-        std::remove_if(
-            activeLines_.begin(),
-            activeLines_.end(),
-            [](const ActiveLine& line)
+            if (currentMusicTime_ >= ev.startTime && currentMusicTime_ <= ev.endTime)
             {
-                return line.elapsedTime >= line.duration;
-            }),
-        activeLines_.end());
+                float duration = ev.endTime - ev.startTime;
+                float rawProgress = (currentMusicTime_ - ev.startTime) / duration;
+                float progress = easeInOutCubic(rawProgress);
 
-    previousMusicTime_ = musicTimeSeconds;
+                lines_[lineIdx].currentPos = ev.startPos + (ev.endPos - ev.startPos) * progress;
+                lines_[lineIdx].currentAngle = ev.startAngle + (ev.endAngle - ev.startAngle) * progress;
+                lines_[lineIdx].currentAlpha = ev.startAlpha + (ev.endAlpha - ev.startAlpha) * progress;
+                break;
+            }
+        }
+        };
+
+    updateLineAnim(0, Line0Events);
+    updateLineAnim(1, Line1Events);
+
+    globalSceneGlow_ = std::max(0.f, globalSceneGlow_ - deltaTime * 4.f);
+    for (auto& line : lines_) {
+        line.hitPulse = std::max(0.f, line.hitPulse - deltaTime * 8.f);
+    }
+
+    for (auto& fx : hitEffects_) {
+        fx.lifetime -= deltaTime;
+    }
+    hitEffects_.erase(
+        std::remove_if(hitEffects_.begin(), hitEffects_.end(), [](const HitEffect& fx) {
+            return fx.lifetime <= 0.f;
+            }),
+        hitEffects_.end());
+
+    // 2. éŸ³ç¬¦ç”Ÿæˆé€»è¾‘
+    constexpr float travelDuration = 1.0f;
+
+    while (nextEventIndex_ < Timeline.size())
+    {
+        const auto& event = Timeline[nextEventIndex_];
+        const float spawnTime = event.hitTime - travelDuration;
+
+        if (currentMusicTime_ >= spawnTime)
+        {
+            createNote(nextEventIndex_);
+            ++nextEventIndex_;
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    activeNotes_.erase(
+        std::remove_if(
+            activeNotes_.begin(),
+            activeNotes_.end(),
+            [this](const ActiveNote& note) {
+                return note.isHit || (currentMusicTime_ - note.hitTime > 0.2f);
+            }),
+        activeNotes_.end());
 }
 
-void RhythmLine::createLine(std::size_t eventIndex, float initialElapsedTime)
+void RhythmLine::createNote(std::size_t eventIndex)
 {
-    const RhythmLineEvent& event = RhythmTimeline[eventIndex];
+    const NoteEvent& event = Timeline[eventIndex];
 
-    ActiveLine line;
-    line.start = startPosition(event.side, event.position);
-    line.direction = directionFromAngle(event.side, event.angleOffset);
-    line.maximumLength = event.length;
-    line.growthSpeed = event.growthSpeed;
-    line.elapsedTime = std::clamp(initialElapsedTime, 0.f, event.duration);
-    line.currentLength = std::min(
-        event.length,
-        event.growthSpeed * line.elapsedTime);
-    line.duration = event.duration;
-    line.thickness = event.thickness;
-    line.color = event.color;
+    ActiveNote note;
+    note.hitTime = event.hitTime;
+    note.travelDuration = 1.0f;
+    note.spawnTime = event.hitTime - note.travelDuration;
+    note.lineIndex = event.lineIndex;
+    note.positionOnLine = event.positionOnLine;
 
-    activeLines_.push_back(line);
+    activeNotes_.push_back(note);
+}
+
+HitResult RhythmLine::onPlayerPressSpace()
+{
+    HitResult bestResult = HitResult::None;
+    int targetIndex = -1;
+    float minError = 999.f;
+
+    for (std::size_t i = 0; i < activeNotes_.size(); ++i)
+    {
+        auto& note = activeNotes_[i];
+        if (note.isHit) continue;
+
+        float timeError = std::abs(currentMusicTime_ - note.hitTime);
+        if (timeError < minError)
+        {
+            minError = timeError;
+            targetIndex = static_cast<int>(i);
+        }
+    }
+
+    if (targetIndex != -1)
+    {
+        constexpr float perfectWindow = 0.15f;
+        constexpr float greatWindow = 0.30f;
+
+        if (minError <= perfectWindow)
+        {
+            bestResult = HitResult::Perfect;
+            auto& note = activeNotes_[targetIndex];
+            note.isHit = true;
+            lines_[note.lineIndex].hitPulse = 1.0f;
+            globalSceneGlow_ = 1.0f;
+
+            sf::Vector2f lineCenter = lines_[note.lineIndex].currentPos;
+            float angleRad = lines_[note.lineIndex].currentAngle * Pi / 180.f;
+            float lineOffset = note.positionOnLine * 500.f;
+
+            sf::Vector2f hitPos = lineCenter + sf::Vector2f{
+                lineOffset * std::cos(angleRad),
+                lineOffset * std::sin(angleRad)
+            };
+
+            hitEffects_.push_back({ hitPos, lines_[note.lineIndex].currentAngle, 0.3f, 0.3f });
+        }
+    }
+
+    return bestResult;
 }
 
 void RhythmLine::draw(sf::RenderWindow& window) const
 {
-    for (const ActiveLine& line : activeLines_)
+    sf::RenderStates addStates;
+    addStates.blendMode = sf::BlendAdd;
+
+    const sf::Color lineCyanGlow(180, 240, 255);
+    const sf::Color noteCoreWhite(240, 250, 255);
+
+    // -----------------------------------------------------------------
+    // 1. ğŸŒŒ ç»˜åˆ¶å‘ä¸Šå»¶ä¼¸çš„ä¸‹è½è½¨é“é¢ (Track Floor)
+    // -----------------------------------------------------------------
+    for (const auto& line : lines_)
     {
-        if (line.duration <= 0.f || line.currentLength <= 0.f)
-        {
-            continue;
-        }
+        if (line.currentAlpha <= 5.f) continue;
 
-        const float progress = std::clamp(
-            line.elapsedTime / line.duration,
-            0.f,
-            1.f);
+        float lineAngleRad = line.currentAngle * Pi / 180.f;
+        // ğŸŒŸ 3. æ³•çº¿æ–¹å‘å–è´Ÿ (-Pi/2)ï¼Œè®©ä¸‹è½è½¨é“å‘ã€ä¸Šæ–¹ã€‘å»¶ä¼¸å±•å¼€
+        float normalAngleRad = lineAngleRad - Pi / 2.f;
+        float trackLen = 850.f;
+        float trackHeight = 500.f; // å‘ä¸Šå»¶ä¼¸è‡³å±å¹•ä¸­ä¸Šæ–¹
 
-        // Ç° 12% µ­Èë£¬Ê£ÓàÊ±¼äÖğ½¥µ­³ö¡£
-        const float alphaFactor = progress < 0.12f
-            ? progress / 0.12f
-            : 1.f - (progress - 0.12f) / 0.88f;
+        sf::Vector2f lineDir{ std::cos(lineAngleRad), std::sin(lineAngleRad) };
+        sf::Vector2f normalDir{ std::cos(normalAngleRad), std::sin(normalAngleRad) };
 
-        const float angleDegrees =
-            std::atan2(line.direction.y, line.direction.x) * 180.f / Pi;
+        sf::VertexArray trackFloor(sf::PrimitiveType::TriangleStrip, 4);
 
-        const auto scaledAlpha = [alphaFactor](std::uint8_t alpha)
-            {
-                return static_cast<std::uint8_t>(
-                    static_cast<float>(alpha) *
-                    std::clamp(1.f, 0.f, 1.f));
-            };
+        sf::Color baseColor = lineCyanGlow;
+        baseColor.a = static_cast<std::uint8_t>(line.currentAlpha * 0.18f + line.hitPulse * 50.f);
 
-        // ÏÈ»­½Ï´ÖµÄÉî×ØÃè±ß¡£Ãè±ßºÍÖ÷Ìå¹²ÓÃÍ¬Ò»Æğµã¡¢³¤¶ÈÓëĞı×ªÖĞĞÄ£¬
-        // Òò´ËÎŞÂÛÏß´ÓÄÄ¸öÆÁÄ»±ßÔµÉì³¤£¬¶¼²»»á·¢Éú´íÎ»¡£
-        const float outlineThickness =
-            line.thickness + OutlinePadding * 2.f;
-        sf::RectangleShape outline(
-            { line.currentLength, outlineThickness });
-        outline.setOrigin({ 0.f, outlineThickness / 2.f });
-        outline.setPosition(line.start);
-        outline.setRotation(sf::degrees(angleDegrees));
+        sf::Color fadeColor = lineCyanGlow;
+        fadeColor.a = 0; // å‘ä¸Šä¸Šæ–¹æ¶ˆè
 
-        sf::Color outlineColor = OutlineColor;
-        outlineColor.a = scaledAlpha(OutlineColor.a);
-        outline.setFillColor(outlineColor);
-        window.draw(outline, sf::RenderStates(sf::BlendAlpha));
+        sf::Vector2f p1 = line.currentPos - lineDir * (trackLen / 2.f);
+        sf::Vector2f p2 = line.currentPos + lineDir * (trackLen / 2.f);
+        sf::Vector2f p3 = p1 + normalDir * trackHeight;
+        sf::Vector2f p4 = p2 + normalDir * trackHeight;
 
-        // ÔÙÔÚÃè±ßÖĞÑë»æÖÆÍ³Ò»µÄÅ¯½ğÉ«Ö÷Ìå¡£
-        sf::RectangleShape shape({ line.currentLength, line.thickness });
-        shape.setOrigin({ 0.f, line.thickness / 2.f });
-        shape.setPosition(line.start);
-        shape.setRotation(sf::degrees(angleDegrees));
+        trackFloor[0].position = p1; trackFloor[0].color = baseColor;
+        trackFloor[1].position = p2; trackFloor[1].color = baseColor;
+        trackFloor[2].position = p3; trackFloor[2].color = fadeColor;
+        trackFloor[3].position = p4; trackFloor[3].color = fadeColor;
 
-        sf::Color mainColor = line.color;
-        mainColor.a = scaledAlpha(line.color.a);
-        shape.setFillColor(mainColor);
+        window.draw(trackFloor, addStates);
+    }
 
-        window.draw(shape, sf::RenderStates(sf::BlendAlpha));
+    // -----------------------------------------------------------------
+    // 2. ğŸ¨ ç»˜åˆ¶ä½äºåº•éƒ¨çš„å‘å…‰åˆ¤å®šçº¿
+    // -----------------------------------------------------------------
+    for (const auto& line : lines_)
+    {
+        if (line.currentAlpha <= 5.f) continue;
+
+        float lineLength = 950.f + line.hitPulse * 120.f;
+
+        // å¤–éƒ¨æ™•å…‰
+        sf::RectangleShape glowShape({ lineLength, 6.f + line.hitPulse * 4.f });
+        glowShape.setOrigin({ lineLength / 2.f, 3.f + line.hitPulse * 2.f });
+        glowShape.setPosition(line.currentPos);
+        glowShape.setRotation(sf::degrees(line.currentAngle));
+
+        sf::Color glowColor = lineCyanGlow;
+        glowColor.a = static_cast<std::uint8_t>(line.currentAlpha * 0.4f);
+        glowShape.setFillColor(glowColor);
+        window.draw(glowShape, addStates);
+
+        // æ ¸å¿ƒäº®çº¿
+        sf::RectangleShape coreShape({ lineLength, 2.0f + line.hitPulse * 1.5f });
+        coreShape.setOrigin({ lineLength / 2.f, 1.0f + line.hitPulse * 0.75f });
+        coreShape.setPosition(line.currentPos);
+        coreShape.setRotation(sf::degrees(line.currentAngle));
+
+        sf::Color coreColor = noteCoreWhite;
+        coreColor.a = static_cast<std::uint8_t>(std::clamp(line.currentAlpha, 0.f, 255.f));
+        coreShape.setFillColor(coreColor);
+        window.draw(coreShape, addStates);
+    }
+
+    // -----------------------------------------------------------------
+    // 3. ğŸ¨ ç»˜åˆ¶ã€ä»ä¸Šæ–¹å¾€è½å‘åº•éƒ¨ã€‘çš„æ–¹å—éŸ³ç¬¦ä¸æ‹–å°¾
+    // -----------------------------------------------------------------
+    for (const ActiveNote& note : activeNotes_)
+    {
+        if (note.isHit) continue;
+        if (note.lineIndex >= lines_.size()) continue;
+
+        const auto& targetLine = lines_[note.lineIndex];
+        if (targetLine.currentAlpha <= 10.f) continue;
+
+        float progress = (currentMusicTime_ - note.spawnTime) / note.travelDuration;
+        progress = std::clamp(progress, 0.f, 1.2f);
+
+        // ğŸŒŸ 4. è·ç¦»é€’å‡ï¼šä»ä¸Šæ–¹ (450px é«˜å¤„) å‘ä¸‹æ»‘åŠ¨åˆ° 0px (åˆ¤å®šçº¿å¤„)
+        float distance = (1.f - progress) * 450.f;
+        float lineAngleRad = targetLine.currentAngle * Pi / 180.f;
+
+        // ğŸŒŸ 5. å–è´Ÿæ³•çº¿ (-Pi/2)ï¼Œä»£è¡¨â€œä¸Šæ–¹çš„å¤©ç©ºæ–¹å‘â€
+        float normalAngleRad = lineAngleRad - Pi / 2.f;
+
+        sf::Vector2f lineOffset{
+            note.positionOnLine * 500.f * std::cos(lineAngleRad),
+            note.positionOnLine * 500.f * std::sin(lineAngleRad)
+        };
+
+        sf::Vector2f dropOffset{
+            distance * std::cos(normalAngleRad),
+            distance * std::sin(normalAngleRad)
+        };
+
+        sf::Vector2f worldPos = targetLine.currentPos + lineOffset + dropOffset;
+
+        // éŸ³ç¬¦å‘ä¸Šæ–¹çš„æ‹–å°¾
+        float trailLen = 50.f * (1.f - progress);
+        sf::RectangleShape trail({ note.size * 2.0f, trailLen });
+        trail.setOrigin({ note.size * 1.0f, 0.f });
+        trail.setPosition(worldPos);
+        trail.setRotation(sf::degrees(targetLine.currentAngle + 90.f)); // æ‹–å°¾æœä¸Š
+
+        sf::Color trailColor = lineCyanGlow;
+        trailColor.a = static_cast<std::uint8_t>(targetLine.currentAlpha * 0.45f);
+        trail.setFillColor(trailColor);
+        window.draw(trail, addStates);
+
+        // æ–¹å—éŸ³ç¬¦æ ¸å¿ƒ
+        sf::RectangleShape noteShape({ note.size * 2.2f, note.size * 0.6f });
+        noteShape.setOrigin({ note.size * 1.1f, note.size * 0.3f });
+        noteShape.setPosition(worldPos);
+        noteShape.setRotation(sf::degrees(targetLine.currentAngle));
+
+        sf::Color noteColor = noteCoreWhite;
+        noteColor.a = static_cast<std::uint8_t>(targetLine.currentAlpha);
+        noteShape.setFillColor(noteColor);
+
+        window.draw(noteShape, addStates);
+    }
+
+    // -----------------------------------------------------------------
+    // 4. ğŸ¨ å‡»ä¸­ç¬é—´çš„çˆ†ç‚¸æ³¢çº¹
+    // -----------------------------------------------------------------
+    for (const auto& fx : hitEffects_)
+    {
+        float progress = 1.0f - (fx.lifetime / fx.maxLifetime);
+        float width = 40.f + progress * 180.f;
+        float height = 20.f * (1.0f - progress);
+
+        sf::RectangleShape wave({ width, height });
+        wave.setOrigin({ width / 2.f, height / 2.f });
+        wave.setPosition(fx.pos);
+        wave.setRotation(sf::degrees(fx.angle));
+
+        sf::Color waveColor = lineCyanGlow;
+        waveColor.a = static_cast<std::uint8_t>((1.0f - progress) * 255);
+        wave.setFillColor(waveColor);
+
+        window.draw(wave, addStates);
     }
 }

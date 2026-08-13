@@ -1,11 +1,11 @@
-#include <SFML/Audio.hpp>
+ï»¿#include <SFML/Audio.hpp>
 #include <SFML/Graphics.hpp>
 
 #include <algorithm>
 #include <cstddef>
 #include <iostream>
 #include <optional>
-
+#include "UI.hpp"
 #include "CameraController.hpp"
 #include "EdgeJitterEffect.hpp"
 #include "Lighting.hpp"
@@ -29,7 +29,7 @@ int main()
 
     sf::RenderWindow window(
         sf::VideoMode({ windowWidth, windowHeight }),
-        "Rhythm Game - 0: Outline Mode",
+        "Rhythm Game - Outline Mode & Beat Elimination",
         sf::Style::Titlebar | sf::Style::Close,
         sf::State::Windowed,
         settings);
@@ -72,6 +72,21 @@ int main()
     }
     rhythmBus.reset();
 
+    UI gameUI;
+
+    if (!gameUI.loadProgressBar(
+        "Assets/Arts/UI/progress_line.png",
+        "Assets/Arts/UI/bar.png"))
+    {
+        std::cerr << "Failed to load progress bar UI.\n";
+        return 1;
+    }
+
+    gameUI.bindMusic(backgroundMusic);
+    gameUI.setProgressBarPosition({ 100.f, -5.f });
+    gameUI.setProgressBarSize({ 1000.f, 40.f });
+    gameUI.setProgressSliderSize({ 20.f, 20.f });
+
     RhythmLine rhythmLine;
     CameraController cameraController(
         { windowWidth / 2.f, windowHeight / 2.f },
@@ -107,15 +122,13 @@ int main()
         edgeJitter.setBurstAmount(1.0f);
     }
 
-    // ¾µÍ·¼àÌýÒôÀÖÊ±¼äÖáÊÂ¼þ¡£
+    // é•œå¤´ä¸Žåœºæ™¯åˆ‡æ¢è®¢é˜…
     rhythmBus.subscribe(
         [&cameraController, &gameMap, &edgeJitter, edgeJitterLoaded](
             const MusicRhythmEvent& event)
         {
             cameraController.onMusicEvent(event);
 
-            // Ã¿¸öÊÂ¼þ¶¼ÈÃ¾µÍ··´×ª 180¡ã£¬
-            // Òò´ËÃ¿´ÎÊÂ¼þ¶¼Ö±½Ó½»Ìæ Normal / Outline¡£
             const bool enableOutline = !gameMap.isOutlineMode();
             gameMap.setOutlineMode(enableOutline);
 
@@ -123,20 +136,7 @@ int main()
             {
                 edgeJitter.restartClock();
             }
-
-            std::cout
-                << "outlineMode="
-                << std::boolalpha
-                << gameMap.isOutlineMode()
-                << '\n';
         });
-
-    std::cout << std::boolalpha
-        << "0 = toggle normal/outline map\n"
-        << "S = toggle shader\n"
-        << "L = toggle darkness overlay\n"
-        << "Space = light pulse\n"
-        << "Escape = quit\n";
 
     sf::Clock frameClock;
 
@@ -147,6 +147,8 @@ int main()
 
         while (const std::optional event = window.pollEvent())
         {
+            gameUI.handleEvent(*event, window);
+
             if (event->is<sf::Event::Closed>())
             {
                 window.close();
@@ -165,13 +167,27 @@ int main()
                     {
                         edgeJitter.restartClock();
                     }
-                    std::cout << "outlineMode = "
-                        << gameMap.isOutlineMode() << '\n';
                     shaderEnabled = !shaderEnabled;
                 }
+                // ðŸŽ® æ ¸å¿ƒæ¸¸æˆé€»è¾‘ï¼šçŽ©å®¶æŒ‰ Space è§¦å‘éŸ³ç¬¦æ¶ˆç­åˆ¤å®šï¼
                 else if (keyPressed->code == sf::Keyboard::Key::Space)
                 {
-                    lightPulse = 1.f;
+                    const HitResult result = rhythmLine.onPlayerPressSpace();
+
+                    if (result == HitResult::Perfect)
+                    {
+                        std::cout << "âœ¨ [PERFECT] éŸ³ç¬¦å®Œç¾Žæ¶ˆç­ï¼\n";
+                        lightPulse = 1.0f; // è§¦å‘èˆžå°å…‰çˆ†å‘ä½œä¸ºæ‰“å‡»æ„Ÿ
+                    }
+                    else if (result == HitResult::Great)
+                    {
+                        std::cout << "ðŸ‘ [GREAT] éŸ³ç¬¦å·²è¢«æ¶ˆç­ï¼\n";
+                        lightPulse = 0.6f;
+                    }
+                    else
+                    {
+                        std::cout << "ðŸ’¨ [MISS] ç©ºæ‰“/åå·®è¿‡å¤§ï¼\n";
+                    }
                 }
                 else if (keyPressed->code == sf::Keyboard::Key::S &&
                     cutLightLoaded)
@@ -185,42 +201,46 @@ int main()
             }
         }
 
-        lightPulse = std::max(
-            0.f, lightPulse - safeDeltaTime * lightPulseDecay);
-        if (cutLightLoaded)
+        if (!gameUI.isPaused())
         {
-            cutLight.setBeatPulse(lightPulse);
+            lightPulse = std::max(
+                0.f, lightPulse - safeDeltaTime * lightPulseDecay);
+            if (cutLightLoaded)
+            {
+                cutLight.setBeatPulse(lightPulse);
+            }
+
+            playerSprite.move({ playerSpeed * safeDeltaTime, 0.f });
+
+            if (animationClock.getElapsedTime().asSeconds() >= walkFrameDuration)
+            {
+                walkFrameIndex =
+                    (walkFrameIndex + 1) % playerTextures.walkFrames.size();
+                playerSprite.setTexture(playerTextures.walkFrames[walkFrameIndex], true);
+                animationClock.restart();
+            }
+
+            if (playerSprite.getPosition().x < 0.f)
+            {
+                playerSprite.setPosition({ 0.f, playerSprite.getPosition().y });
+            }
+
+            const sf::FloatRect playerBounds = playerSprite.getGlobalBounds();
+            const sf::Vector2f playerCenter{
+                playerBounds.position.x + playerBounds.size.x / 2.f,
+                playerBounds.position.y + playerBounds.size.y / 2.f };
+
+            gameMap.update(playerCenter.x);
+            lighting.update();
+            rhythmBus.update(backgroundMusic);
+            gameUI.update();
+
+            const float musicTime =
+                backgroundMusic.getPlayingOffset().asSeconds();
+
+            rhythmLine.update(safeDeltaTime, musicTime);
+            cameraController.update(safeDeltaTime, musicTime, playerCenter);
         }
-
-        playerSprite.move({ playerSpeed * safeDeltaTime, 0.f });
-
-        if (animationClock.getElapsedTime().asSeconds() >= walkFrameDuration)
-        {
-            walkFrameIndex =
-                (walkFrameIndex + 1) % playerTextures.walkFrames.size();
-            playerSprite.setTexture(playerTextures.walkFrames[walkFrameIndex], true);
-            animationClock.restart();
-        }
-
-        if (playerSprite.getPosition().x < 0.f)
-        {
-            playerSprite.setPosition({ 0.f, playerSprite.getPosition().y });
-        }
-
-        const sf::FloatRect playerBounds = playerSprite.getGlobalBounds();
-        const sf::Vector2f playerCenter{
-            playerBounds.position.x + playerBounds.size.x / 2.f,
-            playerBounds.position.y + playerBounds.size.y / 2.f };
-
-        gameMap.update(playerCenter.x);
-        lighting.update();
-        rhythmBus.update(backgroundMusic);
-
-        const float musicTime =
-            backgroundMusic.getPlayingOffset().asSeconds();
-
-        rhythmLine.update(safeDeltaTime, musicTime);
-        cameraController.update(safeDeltaTime, musicTime, playerCenter);
 
         const sf::View gameView = cameraController.getView();
         window.clear(sf::Color::Black);
@@ -231,7 +251,7 @@ int main()
             cutLightStates.shader = &cutLight.shader();
         }
 
-        // ÆÕÍ¨Ìì¿ÕÖ»ÔÚÆÕÍ¨Ä£Ê½ÏÂ»æÖÆ¡£
+        // æ™®é€šå¤©ç©º
         if (!gameMap.isOutlineMode())
         {
             window.setView(gameView);
@@ -245,12 +265,11 @@ int main()
             }
         }
 
-        // ÔÂÁÁ/ºìÈÕÓÀÔ¶ÏÈ»­£¬ºóÐøµÄÆÕÍ¨»òÏß¿ò½¨Öþ»áÕÚµ²Ëü¡£
+        // æœˆäº®/çº¢æ—¥
         window.setView(window.getDefaultView());
         lighting.drawMoon(window);
 
-        // Outline Mode: ÏÈ°ÑÏß¿òÔ¶¾°ºÍ½ü¾°»­µ½Í¸Ã÷Ð§¹û²ã£¬
-        // ÔÙÍ¨¹ý edge_jitter.frag ºÏ³Éµ½Ö÷´°¿Ú¡£
+        // Outline Mode æ¸²æŸ“
         if (gameMap.isOutlineMode() && edgeJitterLoaded)
         {
             edgeJitter.beginFrame();
@@ -263,7 +282,6 @@ int main()
         }
         else
         {
-            // ÆÕÍ¨Ä£Ê½£¬»ò¶¶¶¯ shader ¼ÓÔØÊ§°ÜÊ±µÄ»ØÍË»æÖÆ¡£
             window.setView(gameView);
             if (!gameMap.isOutlineMode() && shaderEnabled && cutLightLoaded)
             {
@@ -275,11 +293,16 @@ int main()
             }
         }
 
+        // çŽ©å®¶è§’è‰²
         window.setView(gameView);
         window.draw(playerSprite);
 
+        // èŠ‚å¥éŸ³ç¬¦ç»˜åˆ¶
         window.setView(window.getDefaultView());
         rhythmLine.draw(window);
+
+        // UI ç»˜åˆ¶
+        gameUI.draw(window);
 
         window.display();
     }
