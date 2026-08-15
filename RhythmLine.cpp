@@ -9,18 +9,32 @@ namespace
     constexpr float ScreenWidth = 1280.f;
     constexpr float ScreenHeight = 720.f;
 
+    // 轨道离屏幕边缘的初始距离。
+    // 上下轨使用 100px，左右轨仍使用 80px。
+    constexpr float VerticalMargin = 100.f;
+    constexpr float HorizontalMargin = 80.f;
+
     struct NoteEvent {
         float hitTime;
         int lineIndex;        // 0: 下, 1: 上, 2: 左, 3: 右
         float positionOnLine; // -0.8 ~ 0.8 (线上的相对偏移位置)
     };
 
-    // 🎨 四轨核心色彩（Phigros 风格高饱和发光色）
-    const sf::Color LineColors[4] = {
-        sf::Color(0, 220, 255),   // 下轨：天青蓝
-        sf::Color(255, 60, 140),  // 上轨：霓虹粉
-        sf::Color(255, 200, 50),  // 左轨：琥珀金
-        sf::Color(160, 60, 255)   // 右轨：紫罗兰
+    // 四轨统一色相，避免四色抢夺场景主体。
+    // 中国风使用宣纸月白，避开金黄色 UI 与红色太阳。
+    const sf::Color ChineseLineColors[4] = {
+        sf::Color(232, 226, 211),
+        sf::Color(232, 226, 211),
+        sf::Color(232, 226, 211),
+        sf::Color(232, 226, 211)
+    };
+
+    // 赛博风恢复冷白主线；可读性由黑色衬底线保证，而不是依赖艳色。
+    const sf::Color CyberLineColors[4] = {
+        sf::Color(232, 236, 240),
+        sf::Color(232, 236, 240),
+        sf::Color(232, 236, 240),
+        sf::Color(232, 236, 240)
     };
 
     // 🎵 Phigros 风格四向谱面 Timeline (3分31秒全长音频精准对齐)
@@ -101,9 +115,10 @@ namespace
         float rad = cameraAngle * Pi / 180.f;
         float progress = (1.0f - std::cos(rad)) * 0.5f; // 0° -> 0.0, 180° -> 1.0
 
-        constexpr float Margin = 80.f;
-        float verticalDist = ScreenHeight - 2.f * Margin;  // 560px
-        float horizontalDist = ScreenWidth - 2.f * Margin; // 1120px
+        // 位移距离必须与构造函数中的初始位置使用同一组边距。
+        // 上下轨：620 - 100 = 520px；左右轨：1200 - 80 = 1120px。
+        const float verticalDist = ScreenHeight - 2.f * VerticalMargin;
+        const float horizontalDist = ScreenWidth - 2.f * HorizontalMargin;
 
         switch (lineIdx) {
         case 0: return { 0.f, -verticalDist * progress };   // 下轨 -> 上移
@@ -144,29 +159,28 @@ namespace
 RhythmLine::RhythmLine()
 {
     lines_.resize(4);
-    constexpr float Margin = 80.f;
 
-    // 0. 下线（Bottom）
-    lines_[0].startPos = { -100.f, ScreenHeight - Margin };
-    lines_[0].endPos = { ScreenWidth + 100.f, ScreenHeight - Margin };
+    // 0. 下线（Bottom）：y = 720 - 100 = 620
+    lines_[0].startPos = { -100.f, ScreenHeight - VerticalMargin };
+    lines_[0].endPos = { ScreenWidth + 100.f, ScreenHeight - VerticalMargin };
     lines_[0].baseAngle = 0.f;
     lines_[0].normalDir = { 0.f, -1.f };
 
-    // 1. 上线（Top）
-    lines_[1].startPos = { ScreenWidth + 100.f, Margin };
-    lines_[1].endPos = { -100.f, Margin };
+    // 1. 上线（Top）：y = 100
+    lines_[1].startPos = { ScreenWidth + 100.f, VerticalMargin };
+    lines_[1].endPos = { -100.f, VerticalMargin };
     lines_[1].baseAngle = 180.f;
     lines_[1].normalDir = { 0.f, 1.f };
 
     // 2. 左线（Left）
-    lines_[2].startPos = { Margin, -100.f };
-    lines_[2].endPos = { Margin, ScreenHeight + 100.f };
+    lines_[2].startPos = { HorizontalMargin, -100.f };
+    lines_[2].endPos = { HorizontalMargin, ScreenHeight + 100.f };
     lines_[2].baseAngle = 90.f;
     lines_[2].normalDir = { 1.f, 0.f };
 
     // 3. 右线（Right）
-    lines_[3].startPos = { ScreenWidth - Margin, ScreenHeight + 100.f };
-    lines_[3].endPos = { ScreenWidth - Margin, -100.f };
+    lines_[3].startPos = { ScreenWidth - HorizontalMargin, ScreenHeight + 100.f };
+    lines_[3].endPos = { ScreenWidth - HorizontalMargin, -100.f };
     lines_[3].baseAngle = 270.f;
     lines_[3].normalDir = { -1.f, 0.f };
 
@@ -191,6 +205,11 @@ void RhythmLine::setCameraAngle(float angleDegrees)
     targetCameraAngle_ = angleDegrees;
 }
 
+void RhythmLine::setCyberStyle(bool enabled)
+{
+    cyberStyle_ = enabled;
+}
+
 void RhythmLine::updateLineLayout()
 {
     for (size_t i = 0; i < lines_.size(); ++i) {
@@ -201,7 +220,7 @@ void RhythmLine::updateLineLayout()
 
 void RhythmLine::update(float deltaTime, float musicTimeSeconds)
 {
-    currentMusicTime_ = std::max(musicTimeSeconds, 0.f);
+    syncMusicTime(musicTimeSeconds);
 
     // 展开开场动画
     if (lineExtendProgress_ < 1.0f) {
@@ -253,9 +272,14 @@ void RhythmLine::update(float deltaTime, float musicTimeSeconds)
     // 清理已被击中或过界 Miss 的 Note
     activeNotes_.erase(
         std::remove_if(activeNotes_.begin(), activeNotes_.end(), [this](const ActiveNote& note) {
-            return note.isHit || (currentMusicTime_ - note.hitTime > 0.15f);
+            return note.isHit || (currentMusicTime_ - note.hitTime > 0.25f);
             }),
         activeNotes_.end());
+}
+
+void RhythmLine::syncMusicTime(float musicTimeSeconds)
+{
+    currentMusicTime_ = std::max(musicTimeSeconds, 0.f);
 }
 
 void RhythmLine::createNote(std::size_t eventIndex)
@@ -288,7 +312,7 @@ HitResult RhythmLine::onPlayerPressSpace()
     }
 
     if (targetIndex != -1) {
-        constexpr float perfectWindow = 0.20f; // Perfect 判定时间窗口 (±200ms)
+        constexpr float perfectWindow = 0.35f; // Perfect 判定时间窗口 (±200ms)
         if (minError <= perfectWindow) {
             bestResult = HitResult::Perfect;
             auto& note = activeNotes_[targetIndex];
@@ -312,96 +336,90 @@ HitResult RhythmLine::onPlayerPressSpace()
 
 HitResult RhythmLine::onPlayerPressKey(LineDirection targetDir)
 {
-    return onPlayerPressSpace();
+    return onPlayerPressLine(static_cast<int>(targetDir));
 }
 
 
 HitResult RhythmLine::onPlayerPressDirection(int screenDirection, float cameraAngle)
 {
-    // 1. 将镜头角度标准化到 [0, 360) 范围
+    if (screenDirection < 0 || screenDirection > 3) {
+        return HitResult::None;
+    }
+
+    // 游戏只使用 0° <-> 180° 翻转。旧逻辑会在 45° 时错误进入
+    // 90° 映射，使上下按键突然对应左右轨道。
     float normalizedAngle = std::fmod(cameraAngle, 360.f);
     if (normalizedAngle < 0.f) normalizedAngle += 360.f;
 
-    // 2. 计算镜头旋转了多少个 90 度步长 (四舍五入到最近的 90 度)
-    int rotationSteps = static_cast<int>(std::round(normalizedAngle / 90.f)) % 4;
-
-    // 3. 根据镜头旋转步长，将【屏幕按键方向】逆向映射回【原始轨道索引】
     int actualLineIndex = screenDirection;
-
-    switch (rotationSteps) {
-    case 1: // 镜头旋转 90°
-        // 屏幕：0(下)->右轨(3), 1(上)->左轨(2), 2(左)->下轨(0), 3(右)->上轨(1)
-    {
-        constexpr int map90[] = { 3, 2, 0, 1 };
-        actualLineIndex = map90[screenDirection];
-    }
-    break;
-
-    case 2: // 镜头旋转 180° (完全对调)
-        // 屏幕：0(下)->上轨(1), 1(上)->下轨(0), 2(左)->右轨(3), 3(右)->左轨(2)
-    {
+    // 轨道越过屏幕中线后才交换输入；其余时候保持原方向。
+    if (normalizedAngle >= 90.f && normalizedAngle < 270.f) {
         constexpr int map180[] = { 1, 0, 3, 2 };
         actualLineIndex = map180[screenDirection];
     }
-    break;
 
-    case 3: // 镜头旋转 270°
-    {
-        constexpr int map270[] = { 2, 3, 1, 0 };
-        actualLineIndex = map270[screenDirection];
-    }
-    break;
-
-    default: // 0° / 360° (未旋转)
-        actualLineIndex = screenDirection;
-        break;
-    }
-
-    // 4. 同步更新 RhythmLine 内部的 cameraAngle_ (保证绘制与粒子解算坐标一致)
+    // 保证击中特效坐标与镜头位置一致。
     cameraAngle_ = cameraAngle;
-
-    // 5. 调用已有按轨道索引判定的逻辑
     return onPlayerPressLine(actualLineIndex);
 }
 
 
 HitResult RhythmLine::onPlayerPressLine(int lineIdx)
 {
-    HitResult bestResult = HitResult::None;
-    int targetIndex = -1;
-    float minError = 999.f;
+    if (lineIdx < 0 || lineIdx >= static_cast<int>(lines_.size())) {
+        return HitResult::None;
+    }
 
+    // 原型阶段使用较宽的判定窗，优先保证输入手感和可测试性。
+    constexpr float perfectWindow = 0.35f; // +/- 120 ms
+    constexpr float greatWindow = 0.5f;   // +/- 250 ms
+
+    int targetIndex = -1;
+    float targetError = 0.f;
+
+    // activeNotes_ 按时间线顺序生成。优先处理该轨最早的可判定音符，
+    // 防止连续音符的时间窗口重叠时，后一个音符抢走前一个音符的按键。
     for (std::size_t i = 0; i < activeNotes_.size(); ++i) {
-        auto& note = activeNotes_[i];
+        const auto& note = activeNotes_[i];
         if (note.isHit || note.lineIndex != lineIdx) continue;
 
-        float timeError = std::abs(currentMusicTime_ - note.hitTime);
-        if (timeError < minError) {
-            minError = timeError;
+        const float signedError = currentMusicTime_ - note.hitTime;
+
+        // 已经过期的音符不应阻塞后面的音符。
+        if (signedError > greatWindow) continue;
+
+        // 最早音符尚未进入判定窗，后续音符只会更早，不再继续搜索。
+        if (signedError < -greatWindow) break;
+
+        targetError = std::abs(signedError);
+        if (targetError <= greatWindow) {
             targetIndex = static_cast<int>(i);
+            break;
         }
     }
 
-    if (targetIndex != -1) {
-        constexpr float perfectWindow = 0.20f;
-        if (minError <= perfectWindow) {
-            bestResult = HitResult::Perfect;
-            auto& note = activeNotes_[targetIndex];
-            note.isHit = true;
-            lines_[note.lineIndex].hitPulse = 1.2f;
-            globalSceneGlow_ = 1.0f;
-
-            sf::Vector2f lineShift = getSingleLineShift(note.lineIndex, cameraAngle_);
-            sf::Vector2f lineCenter = (lines_[note.lineIndex].startPos + lines_[note.lineIndex].endPos) / 2.f + lineShift;
-
-            float lineRad = lines_[note.lineIndex].baseAngle * Pi / 180.f;
-            sf::Vector2f lineTangent{ std::cos(lineRad), std::sin(lineRad) };
-            sf::Vector2f notePos = lineCenter + lineTangent * (note.positionOnLine * 300.f);
-
-            hitEffects_.push_back({ notePos, lines_[note.lineIndex].baseAngle, 0.35f, 0.35f });
-        }
+    if (targetIndex == -1) {
+        return HitResult::None;
     }
-    return bestResult;
+
+    auto& note = activeNotes_[targetIndex];
+    note.isHit = true;
+    lines_[note.lineIndex].hitPulse = 1.2f;
+    globalSceneGlow_ = 1.0f;
+
+    const sf::Vector2f lineShift = getSingleLineShift(note.lineIndex, cameraAngle_);
+    const sf::Vector2f lineCenter =
+        (lines_[note.lineIndex].startPos + lines_[note.lineIndex].endPos) / 2.f + lineShift;
+
+    const float lineRad = lines_[note.lineIndex].baseAngle * Pi / 180.f;
+    const sf::Vector2f lineTangent{ std::cos(lineRad), std::sin(lineRad) };
+    const sf::Vector2f notePos =
+        lineCenter + lineTangent * (note.positionOnLine * 300.f);
+
+    hitEffects_.push_back(
+        { notePos, lines_[note.lineIndex].baseAngle, 0.35f, 0.35f });
+
+    return targetError <= perfectWindow ? HitResult::Perfect : HitResult::Great;
 }
 
 
@@ -411,6 +429,15 @@ void RhythmLine::draw(sf::RenderWindow& window) const
 
     sf::RenderStates addStates;
     addStates.blendMode = sf::BlendAdd;
+
+    const sf::Color* lineColors =
+        cyberStyle_ ? CyberLineColors : ChineseLineColors;
+
+    // 两种风格都采用极细半透明轨道；游戏感由扫光和击中脉冲提供。
+    const float baseCoreThickness = cyberStyle_ ? 1.1f : 1.2f;
+    const float baseGlowThickness = 3.5f;
+    const float glowAlphaScale = 0.12f;
+    const float idleAlpha = cyberStyle_ ? 145.f : 125.f;
 
     // -----------------------------------------------------------------
     // 🌐 1. 绘制 4 条核心判定线 (带外发光 Glow)
@@ -429,26 +456,49 @@ void RhythmLine::draw(sf::RenderWindow& window) const
         sf::Vector2f lineCenter = (currentStart + animatedEnd) / 2.f;
 
         // 核心实线
-        sf::RectangleShape coreLine({ currentLen, 3.0f + line.hitPulse * 3.f });
-        coreLine.setOrigin({ currentLen / 2.f, (3.0f + line.hitPulse * 3.f) / 2.f });
+        const float coreThickness =
+            baseCoreThickness + line.hitPulse * (cyberStyle_ ? 2.2f : 1.4f);
+        sf::RectangleShape coreLine({ currentLen, coreThickness });
+        coreLine.setOrigin({ currentLen / 2.f, coreThickness / 2.f });
         coreLine.setPosition(lineCenter);
         coreLine.setRotation(sf::degrees(line.baseAngle));
 
-        sf::Color color = LineColors[i];
-        color.a = static_cast<std::uint8_t>(std::clamp(line.currentAlpha, 0.f, 255.f));
+        sf::Color color = lineColors[i];
+        color.a = static_cast<std::uint8_t>(std::clamp(
+            idleAlpha + line.hitPulse * 70.f, 0.f, 255.f));
         coreLine.setFillColor(color);
+
+        // 白线下方先绘制极窄黑色衬底，经过白色建筑轮廓时仍保持清晰。
+        if (cyberStyle_) {
+            const float backingThickness = 3.0f + line.hitPulse * 1.2f;
+            sf::RectangleShape backingLine({ currentLen, backingThickness });
+            backingLine.setOrigin({ currentLen / 2.f, backingThickness / 2.f });
+            backingLine.setPosition(lineCenter);
+            backingLine.setRotation(sf::degrees(line.baseAngle));
+            backingLine.setFillColor(sf::Color(0, 0, 0,
+                static_cast<std::uint8_t>(145.f + line.hitPulse * 45.f)));
+            window.draw(backingLine);
+        }
         window.draw(coreLine, addStates);
 
         // 外围发光层
-        sf::RectangleShape glowLine({ currentLen, 10.0f + line.hitPulse * 6.f });
-        glowLine.setOrigin({ currentLen / 2.f, (10.0f + line.hitPulse * 6.f) / 2.f });
-        glowLine.setPosition(lineCenter);
-        glowLine.setRotation(sf::degrees(line.baseAngle));
+        if (cyberStyle_) {
+            // 赛博场景不再叠加彩色残影或宽外辉。
+        }
+        else {
+            const float glowThickness =
+                baseGlowThickness + line.hitPulse * 3.f;
+            sf::RectangleShape glowLine({ currentLen, glowThickness });
+            glowLine.setOrigin({ currentLen / 2.f, glowThickness / 2.f });
+            glowLine.setPosition(lineCenter);
+            glowLine.setRotation(sf::degrees(line.baseAngle));
 
-        sf::Color glowColor = color;
-        glowColor.a = static_cast<std::uint8_t>(color.a * 0.35f);
-        glowLine.setFillColor(glowColor);
-        window.draw(glowLine, addStates);
+            sf::Color glowColor = color;
+            glowColor.a = static_cast<std::uint8_t>(color.a * glowAlphaScale);
+            glowLine.setFillColor(glowColor);
+            window.draw(glowLine, addStates);
+        }
+
     }
 
     // -----------------------------------------------------------------
@@ -472,7 +522,7 @@ void RhythmLine::draw(sf::RenderWindow& window) const
             sf::Vector2f lineTangent{ std::cos(lineRad), std::sin(lineRad) };
             sf::Vector2f noteCenterPos = lineCenter + lineTangent * (note.positionOnLine * 300.f);
 
-            sf::Color noteColor = LineColors[note.lineIndex];
+            sf::Color noteColor = lineColors[note.lineIndex];
             noteColor.a = static_cast<std::uint8_t>(255 * alphaProgress * (1.0f - progress * 0.15f));
 
             // 🌟 A. 中心 45° 菱形核心（静态锚点）
@@ -488,16 +538,21 @@ void RhythmLine::draw(sf::RenderWindow& window) const
             float innerRadius = (1.0f - progress) * 46.f + 14.f;
             float rotAngle = progress * 120.f;
 
-            sf::Color glowColor = baseGoldColor;
-            glowColor.a = static_cast<std::uint8_t>(noteColor.a * 0.3f);
+            sf::Color glowColor = cyberStyle_ ? noteColor : baseGoldColor;
+            glowColor.a = static_cast<std::uint8_t>(
+                noteColor.a * (cyberStyle_ ? 0.55f : 0.25f));
 
             // 外八边形发光与核心轮廓
-            drawPolygonThick(window, noteCenterPos, outerRadius * 1.05f, 8, rotAngle, 4.0f, glowColor, addStates);
-            drawPolygonThick(window, noteCenterPos, outerRadius, 8, rotAngle, 2.0f, noteColor, addStates);
+            drawPolygonThick(window, noteCenterPos, outerRadius * 1.05f, 8, rotAngle,
+                cyberStyle_ ? 5.0f : 3.0f, glowColor, addStates);
+            drawPolygonThick(window, noteCenterPos, outerRadius, 8, rotAngle,
+                cyberStyle_ ? 2.5f : 1.5f, noteColor, addStates);
 
             // 内八边形反向旋转轮廓
-            drawPolygonThick(window, noteCenterPos, innerRadius * 1.05f, 8, -rotAngle * 0.7f, 3.0f, glowColor, addStates);
-            drawPolygonThick(window, noteCenterPos, innerRadius, 8, -rotAngle * 0.7f, 1.5f, noteColor, addStates);
+            drawPolygonThick(window, noteCenterPos, innerRadius * 1.05f, 8, -rotAngle * 0.7f,
+                cyberStyle_ ? 4.0f : 2.5f, glowColor, addStates);
+            drawPolygonThick(window, noteCenterPos, innerRadius, 8, -rotAngle * 0.7f,
+                cyberStyle_ ? 2.0f : 1.2f, noteColor, addStates);
         }
     }
 
@@ -520,7 +575,9 @@ void RhythmLine::draw(sf::RenderWindow& window) const
 
         // 扩散爆炸多边形线框
         float burstRadius = 20.f + progress * 80.f;
-        sf::Color burstColor(255, 230, 150, static_cast<std::uint8_t>((1.0f - progress) * 200));
+        sf::Color burstColor = cyberStyle_
+            ? sf::Color(232, 236, 240, static_cast<std::uint8_t>((1.0f - progress) * 205))
+            : sf::Color(242, 235, 218, static_cast<std::uint8_t>((1.0f - progress) * 185));
         drawPolygonThick(window, fx.pos, burstRadius, 8, progress * 45.f, 2.0f, burstColor, addStates);
     }
 }

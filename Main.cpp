@@ -35,6 +35,8 @@ int main()
         sf::State::Windowed,
         settings);
     window.setFramerateLimit(60);
+    // 保留按键重复，便于当前原型阶段测试连续输入。
+    window.setKeyRepeatEnabled(true);
 
     // 1. 资源与玩家加载
     PlayerTextures playerTextures;
@@ -115,6 +117,8 @@ int main()
     bool shaderEnabled = cutLightLoaded;
     bool darknessEnabled = false;
     float lightPulse = 0.f;
+    bool cyberStyleEnabled = gameMap.isOutlineMode();
+    rhythmLine.setCyberStyle(cyberStyleEnabled);
 
     EdgeJitterEffect edgeJitter;
     const bool edgeJitterLoaded = edgeJitter.initialize(
@@ -130,13 +134,16 @@ int main()
 
     // 7. 镜头与场景反色事件订阅
     rhythmBus.subscribe(
-        [&cameraController, &gameMap, &edgeJitter, edgeJitterLoaded](
+        [&cameraController, &gameMap, &rhythmLine, &cyberStyleEnabled,
+        &edgeJitter, edgeJitterLoaded](
             const MusicRhythmEvent& event)
         {
             cameraController.onMusicEvent(event);
 
             const bool enableOutline = !gameMap.isOutlineMode();
             gameMap.setOutlineMode(enableOutline);
+            cyberStyleEnabled = enableOutline;
+            rhythmLine.setCyberStyle(cyberStyleEnabled);
 
             if (enableOutline && edgeJitterLoaded)
             {
@@ -153,6 +160,11 @@ int main()
     {
         const float safeDeltaTime =
             std::min(frameClock.restart().asSeconds(), 0.1f);
+
+        // 输入发生在本帧 update() 之前，因此先同步一次实时音乐位置，
+        // 避免击打判定继续使用上一帧的 currentMusicTime_。
+        rhythmLine.syncMusicTime(
+            backgroundMusic.getPlayingOffset().asSeconds());
 
         // -------------------------------------------------------------
         // 📥 事件处理 Event Handling
@@ -175,6 +187,8 @@ int main()
                 else if (keyPressed->code == sf::Keyboard::Key::Num0)
                 {
                     gameMap.setOutlineMode(!gameMap.isOutlineMode());
+                    cyberStyleEnabled = gameMap.isOutlineMode();
+                    rhythmLine.setCyberStyle(cyberStyleEnabled);
                     if (gameMap.isOutlineMode() && edgeJitterLoaded)
                     {
                         edgeJitter.restartClock();
@@ -231,10 +245,15 @@ int main()
                     else
                     {
                         std::cout << "💨 [MISS] 绝对方向 " << screenDirection << " 空击/偏差过大！\n";
+                        // 即使没有命中音符也给出轻微即时反馈，避免按键像是失效。
+                        lightPulse = std::max(lightPulse, 0.18f);
                     }
                 }
             }
         }
+
+        // 普通场景使用中国风；轮廓场景自动切换为赛博风。
+        rhythmLine.setCyberStyle(cyberStyleEnabled);
 
         // -------------------------------------------------------------
         // ⚙️ 逻辑更新 Logical Update

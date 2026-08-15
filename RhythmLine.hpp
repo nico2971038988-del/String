@@ -26,7 +26,9 @@ public:
     RhythmLine();
 
     void update(float deltaTime, float musicTimeSeconds);
+    void syncMusicTime(float musicTimeSeconds);
     void setCameraAngle(float angleDegrees);
+    void setCyberStyle(bool enabled);
     void draw(sf::RenderWindow& window) const;
     void reset();
 
@@ -80,6 +82,7 @@ private:
     float targetCameraAngle_ = 0.f;
     float lineRotationSpeed_ = 180.f; // 加快转速以适应 Phigros 的流畅感
     float globalSceneGlow_ = 0.f;
+    bool cyberStyle_ = false;
 
     float lineExtendProgress_ = 0.f;
     // 在 RhythmLine.hpp 的 private 区域添加可调参数：
