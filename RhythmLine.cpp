@@ -10,8 +10,9 @@ namespace
     constexpr float ScreenHeight = 720.f;
 
     // 轨道离屏幕边缘的初始距离。
-    // 上下轨使用 100px，左右轨仍使用 80px。
-    constexpr float VerticalMargin = 100.f;
+    // 上下轨使用 140px，左右轨仍使用 80px。
+    // 相比上一版：下线再向上 40px，上线再向下 40px。
+    constexpr float VerticalMargin = 140.f;
     constexpr float HorizontalMargin = 80.f;
 
     struct NoteEvent {
@@ -116,7 +117,7 @@ namespace
         float progress = (1.0f - std::cos(rad)) * 0.5f; // 0° -> 0.0, 180° -> 1.0
 
         // 位移距离必须与构造函数中的初始位置使用同一组边距。
-        // 上下轨：620 - 100 = 520px；左右轨：1200 - 80 = 1120px。
+        // 上下轨：580 - 140 = 440px；左右轨：1200 - 80 = 1120px。
         const float verticalDist = ScreenHeight - 2.f * VerticalMargin;
         const float horizontalDist = ScreenWidth - 2.f * HorizontalMargin;
 
@@ -160,13 +161,13 @@ RhythmLine::RhythmLine()
 {
     lines_.resize(4);
 
-    // 0. 下线（Bottom）：y = 720 - 100 = 620
+    // 0. 下线（Bottom）：y = 720 - 140 = 580
     lines_[0].startPos = { -100.f, ScreenHeight - VerticalMargin };
     lines_[0].endPos = { ScreenWidth + 100.f, ScreenHeight - VerticalMargin };
     lines_[0].baseAngle = 0.f;
     lines_[0].normalDir = { 0.f, -1.f };
 
-    // 1. 上线（Top）：y = 100
+    // 1. 上线（Top）：y = 140
     lines_[1].startPos = { ScreenWidth + 100.f, VerticalMargin };
     lines_[1].endPos = { -100.f, VerticalMargin };
     lines_[1].baseAngle = 180.f;
@@ -192,6 +193,7 @@ void RhythmLine::reset()
     activeNotes_.clear();
     hitEffects_.clear();
     nextEventIndex_ = 0;
+    pendingMissCount_ = 0;
     currentMusicTime_ = 0.f;
     globalSceneGlow_ = 0.f;
     cameraAngle_ = 0.f;
@@ -272,9 +274,26 @@ void RhythmLine::update(float deltaTime, float musicTimeSeconds)
     // 清理已被击中或过界 Miss 的 Note
     activeNotes_.erase(
         std::remove_if(activeNotes_.begin(), activeNotes_.end(), [this](const ActiveNote& note) {
-            return note.isHit || (currentMusicTime_ - note.hitTime > 0.25f);
+            if (note.isHit) {
+                return true;
+            }
+
+            // 玩家没有按键：音符超过判定点 250ms 后记为 Miss。
+            if (currentMusicTime_ - note.hitTime > 0.25f) {
+                ++pendingMissCount_;
+                return true;
+            }
+
+            return false;
             }),
         activeNotes_.end());
+}
+
+int RhythmLine::consumeMissCount()
+{
+    const int count = pendingMissCount_;
+    pendingMissCount_ = 0;
+    return count;
 }
 
 void RhythmLine::syncMusicTime(float musicTimeSeconds)
@@ -312,7 +331,7 @@ HitResult RhythmLine::onPlayerPressSpace()
     }
 
     if (targetIndex != -1) {
-        constexpr float perfectWindow = 0.35f; // Perfect 判定时间窗口 (±200ms)
+        constexpr float perfectWindow = 0.20f; // Perfect 判定时间窗口 (±200ms)
         if (minError <= perfectWindow) {
             bestResult = HitResult::Perfect;
             auto& note = activeNotes_[targetIndex];
@@ -371,8 +390,8 @@ HitResult RhythmLine::onPlayerPressLine(int lineIdx)
     }
 
     // 原型阶段使用较宽的判定窗，优先保证输入手感和可测试性。
-    constexpr float perfectWindow = 0.35f; // +/- 120 ms
-    constexpr float greatWindow = 0.5f;   // +/- 250 ms
+    constexpr float perfectWindow = 0.3f; // +/- 120 ms
+    constexpr float greatWindow = 0.65f;   // +/- 250 ms
 
     int targetIndex = -1;
     float targetError = 0.f;

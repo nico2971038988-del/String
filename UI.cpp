@@ -6,7 +6,8 @@
 UI::UI()
     : progressLineSprite_(progressLineTexture_),
     progressSliderSprite_(progressSliderTexture_),
-    pauseText_(font_) // 👈 显式传入 font_ 进行初始化，解决 SFML 3 没有默认构造的问题
+    pauseText_(font_),
+    judgementText_(font_)
 {
 }
 
@@ -47,6 +48,11 @@ bool UI::loadFont(const std::string& fontPath) {
 
         sf::FloatRect bounds = pauseText_.getLocalBounds();
         pauseText_.setOrigin({ bounds.position.x + bounds.size.x / 2.f, bounds.position.y + bounds.size.y / 2.f });
+
+        judgementText_.setCharacterSize(38);
+        judgementText_.setStyle(sf::Text::Bold);
+        judgementText_.setOutlineColor(sf::Color(92, 58, 25, 230));
+        judgementText_.setOutlineThickness(1.5f);
         return true;
     }
     fontLoaded_ = false;
@@ -188,6 +194,63 @@ void UI::update() {
     }
 }
 
+void UI::showJudgement(JudgementType judgement) {
+    if (!fontLoaded_) return;
+
+    switch (judgement) {
+    case JudgementType::Perfect:
+        judgementText_.setString("PERFECT");
+        judgementBaseColor_ = sf::Color(255, 232, 170);
+        break;
+    case JudgementType::Great:
+        judgementText_.setString("GREAT");
+        judgementBaseColor_ = sf::Color(242, 207, 145);
+        break;
+    case JudgementType::Miss:
+        judgementText_.setString("MISS");
+        judgementBaseColor_ = sf::Color(205, 168, 105);
+        break;
+    }
+
+    const sf::FloatRect bounds = judgementText_.getLocalBounds();
+    judgementText_.setOrigin({
+        bounds.position.x + bounds.size.x * 0.5f,
+        bounds.position.y + bounds.size.y * 0.5f
+        });
+    judgementVisible_ = true;
+    judgementClock_.restart();
+}
+
+void UI::drawJudgement(sf::RenderTarget& target) {
+    if (!fontLoaded_ || !judgementVisible_) return;
+
+    const float elapsed = judgementClock_.getElapsedTime().asSeconds();
+    if (elapsed >= judgementDuration_) {
+        judgementVisible_ = false;
+        return;
+    }
+
+    const float progress = std::clamp(elapsed / judgementDuration_, 0.f, 1.f);
+    const float fade = progress < 0.55f
+        ? 1.f
+        : 1.f - (progress - 0.55f) / 0.45f;
+    const float popScale = 1.f + 0.18f * std::exp(-elapsed * 12.f);
+
+    sf::Color color = judgementBaseColor_;
+    color.a = static_cast<std::uint8_t>(255.f * std::clamp(fade, 0.f, 1.f));
+    judgementText_.setFillColor(color);
+    judgementText_.setScale({ popScale, popScale });
+
+    const sf::View& view = target.getView();
+    const sf::Vector2f viewCenter = view.getCenter();
+    const sf::Vector2f viewSize = view.getSize();
+    judgementText_.setPosition({
+        viewCenter.x,
+        viewCenter.y + viewSize.y * 0.5f - 80.f
+        });
+    target.draw(judgementText_);
+}
+
 void UI::drawPauseOverlay(sf::RenderTarget& target) {
     sf::Vector2f targetSize = target.getView().getSize();
 
@@ -233,7 +296,10 @@ void UI::draw(sf::RenderTarget& target) {
         target.draw(progressSliderSprite_);
     }
 
-    // 2. 若处于暂停状态，绘制暂停 UI Overlay
+    // 2. 绘制屏幕下方的判定提示。
+    drawJudgement(target);
+
+    // 3. 若处于暂停状态，绘制暂停 UI Overlay
     if (isPaused_) {
         drawPauseOverlay(target);
     }

@@ -5,6 +5,12 @@
 
 #include <string>
 
+enum class JudgementType {
+    Perfect,
+    Great,
+    Miss
+};
+
 // 游戏屏幕 UI 的统一入口。
 // 包含音频进度条、暂停控制以及暂停 UI Overlay 渲染。
 class UI {
@@ -27,6 +33,7 @@ public:
     void handleEvent(const sf::Event& event, const sf::RenderWindow& window);
     void update();
     void draw(sf::RenderTarget& target);
+    void showJudgement(JudgementType judgement);
 
     float musicProgress() const;
     bool isProgressBarDragging() const { return progressBarDragging_; }
@@ -45,6 +52,7 @@ private:
 
     // 绘制暂停界面 overlay
     void drawPauseOverlay(sf::RenderTarget& target);
+    void drawJudgement(sf::RenderTarget& target);
 
     sf::Texture progressLineTexture_;
     sf::Texture progressSliderTexture_;
@@ -54,6 +62,11 @@ private:
     sf::Font font_;
     bool fontLoaded_ = false;
     sf::Text pauseText_;
+    sf::Text judgementText_;
+    sf::Clock judgementClock_;
+    bool judgementVisible_ = false;
+    sf::Color judgementBaseColor_{ sf::Color::White };
+    float judgementDuration_ = 0.65f;
 
     sf::Music* music_ = nullptr;
     sf::Vector2f progressBarPosition_{ 0.f, 0.f };

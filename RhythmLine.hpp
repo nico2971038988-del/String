@@ -38,6 +38,9 @@ public:
     HitResult onPlayerPressLine(int targetLineIndex);
     HitResult onPlayerPressDirection(int screenDirection, float cameraAngle);
 
+    // 读取并清空未按键导致的超时 Miss 数量。
+    int consumeMissCount();
+
 private:
     struct ActiveNote
     {
@@ -83,6 +86,7 @@ private:
     float lineRotationSpeed_ = 180.f; // 加快转速以适应 Phigros 的流畅感
     float globalSceneGlow_ = 0.f;
     bool cyberStyle_ = false;
+    int pendingMissCount_ = 0;
 
     float lineExtendProgress_ = 0.f;
     // 在 RhythmLine.hpp 的 private 区域添加可调参数：

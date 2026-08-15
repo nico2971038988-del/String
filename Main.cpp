@@ -92,6 +92,11 @@ int main()
     gameUI.setProgressBarPosition({ 100.f, -5.f });
     gameUI.setProgressBarSize({ 1000.f, 40.f });
     gameUI.setProgressSliderSize({ 20.f, 20.f });
+    //加载字体
+    if (!gameUI.loadFont("Assets/Fonts/brendieroundedregulardemo-yqvl8.otf"))
+    {
+        std::cerr << "Failed to load UI font.\n";
+    }
 
     // 5. 节奏线与镜头控制器
     RhythmLine rhythmLine;
@@ -236,17 +241,20 @@ int main()
                     {
                         std::cout << "✨ [PERFECT] 绝对方向 " << screenDirection << " 音符完美击切！\n";
                         lightPulse = 1.0f;
+                        gameUI.showJudgement(JudgementType::Perfect);
                     }
                     else if (result == HitResult::Great)
                     {
                         std::cout << "👍 [GREAT] 绝对方向 " << screenDirection << " 音符击切！\n";
                         lightPulse = 0.6f;
+                        gameUI.showJudgement(JudgementType::Great);
                     }
                     else
                     {
                         std::cout << "💨 [MISS] 绝对方向 " << screenDirection << " 空击/偏差过大！\n";
                         // 即使没有命中音符也给出轻微即时反馈，避免按键像是失效。
                         lightPulse = std::max(lightPulse, 0.18f);
+                        gameUI.showJudgement(JudgementType::Miss);
                     }
                 }
             }
@@ -304,6 +312,16 @@ int main()
             // 关键同步：同步角度并更新 4 轨道状态
             rhythmLine.setCameraAngle(cameraController.getCurrentAngle());
             rhythmLine.update(safeDeltaTime, musicTime);
+
+            // 玩家没有按键而超时的音符，同样向 UI 发送 MISS。
+            const int timeoutMissCount = rhythmLine.consumeMissCount();
+            if (timeoutMissCount > 0)
+            {
+                gameUI.showJudgement(JudgementType::Miss);
+                lightPulse = std::max(lightPulse, 0.18f);
+                std::cout << "💨 [MISS] " << timeoutMissCount
+                    << " 个音符未击中！\n";
+            }
         }
 
         // -------------------------------------------------------------
