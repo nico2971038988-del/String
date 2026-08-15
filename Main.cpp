@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <iostream>
 #include <optional>
-#include "UI.hpp"
+
 #include "CameraController.hpp"
 #include "EdgeJitterEffect.hpp"
 #include "Lighting.hpp"
@@ -14,6 +14,7 @@
 #include "PlayerAssets.hpp"
 #include "RhythmLine.hpp"
 #include "StageCutLight.hpp"
+#include "UI.hpp"
 
 int main()
 {
@@ -35,6 +36,7 @@ int main()
         settings);
     window.setFramerateLimit(60);
 
+    // 1. 资源与玩家加载
     PlayerTextures playerTextures;
     if (!loadWalkTextures(playerTextures) || playerTextures.walkFrames.empty())
     {
@@ -49,6 +51,7 @@ int main()
     std::size_t walkFrameIndex = 0;
     sf::Clock animationClock;
 
+    // 2. 地图与灯光系统初始化
     Map gameMap;
     if (!gameMap.load())
     {
@@ -63,6 +66,7 @@ int main()
         return 1;
     }
 
+    // 3. 音频与节奏事件总线
     sf::Music backgroundMusic;
     MusicRhythmEventBus rhythmBus;
     if (!initializeMusic(backgroundMusic, "Assets/Arts/Audio/1.ogg"))
@@ -72,8 +76,8 @@ int main()
     }
     rhythmBus.reset();
 
+    // 4. UI 界面设置
     UI gameUI;
-
     if (!gameUI.loadProgressBar(
         "Assets/Arts/UI/progress_line.png",
         "Assets/Arts/UI/bar.png"))
@@ -87,11 +91,13 @@ int main()
     gameUI.setProgressBarSize({ 1000.f, 40.f });
     gameUI.setProgressSliderSize({ 20.f, 20.f });
 
+    // 5. 节奏线与镜头控制器
     RhythmLine rhythmLine;
     CameraController cameraController(
         { windowWidth / 2.f, windowHeight / 2.f },
         { static_cast<float>(windowWidth), static_cast<float>(windowHeight) });
 
+    // 6. Shader 特效组件
     StageCutLight cutLight;
     const bool cutLightLoaded = cutLight.load(
         "Assets/Shaders/stage_cut_light.frag", window.getSize());
@@ -122,7 +128,7 @@ int main()
         edgeJitter.setBurstAmount(1.0f);
     }
 
-    // 镜头与场景切换订阅
+    // 7. 镜头与场景反色事件订阅
     rhythmBus.subscribe(
         [&cameraController, &gameMap, &edgeJitter, edgeJitterLoaded](
             const MusicRhythmEvent& event)
@@ -140,11 +146,17 @@ int main()
 
     sf::Clock frameClock;
 
+    // =================================================================
+    // 🔄 主游戏循环 Main Game Loop
+    // =================================================================
     while (window.isOpen())
     {
         const float safeDeltaTime =
             std::min(frameClock.restart().asSeconds(), 0.1f);
 
+        // -------------------------------------------------------------
+        // 📥 事件处理 Event Handling
+        // -------------------------------------------------------------
         while (const std::optional event = window.pollEvent())
         {
             gameUI.handleEvent(*event, window);
@@ -169,40 +181,67 @@ int main()
                     }
                     shaderEnabled = !shaderEnabled;
                 }
-                // 🎮 核心游戏逻辑：玩家按 Space 触发音符消灭判定！
-                else if (keyPressed->code == sf::Keyboard::Key::Space)
+                else if (keyPressed->code == sf::Keyboard::Key::S && cutLightLoaded)
                 {
-                    const HitResult result = rhythmLine.onPlayerPressSpace();
-
-                    if (result == HitResult::Perfect)
-                    {
-                        std::cout << "✨ [PERFECT] 音符完美消灭！\n";
-                        lightPulse = 1.0f; // 触发舞台光爆发作为打击感
-                    }
-                    else if (result == HitResult::Great)
-                    {
-                        std::cout << "👍 [GREAT] 音符已被消灭！\n";
-                        lightPulse = 0.6f;
-                    }
-                    else
-                    {
-                        std::cout << "💨 [MISS] 空打/偏差过大！\n";
-                    }
-                }
-                else if (keyPressed->code == sf::Keyboard::Key::S &&
-                    cutLightLoaded)
-                {
-                    shaderEnabled = !shaderEnabled;
+                    // 注意：这里按 S 键如果触发全局 Shader 切换，可能会和向下击打（S键）冲突。
+                    // 建议后期改用其他按键切换 Shader，此处保留原逻辑
                 }
                 else if (keyPressed->code == sf::Keyboard::Key::L)
                 {
                     darknessEnabled = !darknessEnabled;
                 }
+
+                // 🎮 4轨道击打判定：捕捉玩家输入的【绝对屏幕方向】
+                int screenDirection = -1;
+
+                if (keyPressed->code == sf::Keyboard::Key::S || keyPressed->code == sf::Keyboard::Key::Down)
+                {
+                    screenDirection = 0; // 屏幕下方
+                }
+                else if (keyPressed->code == sf::Keyboard::Key::W || keyPressed->code == sf::Keyboard::Key::Up)
+                {
+                    screenDirection = 1; // 屏幕上方
+                }
+                else if (keyPressed->code == sf::Keyboard::Key::A || keyPressed->code == sf::Keyboard::Key::Left)
+                {
+                    screenDirection = 2; // 屏幕左方
+                }
+                else if (keyPressed->code == sf::Keyboard::Key::D || keyPressed->code == sf::Keyboard::Key::Right)
+                {
+                    screenDirection = 3; // 屏幕右方
+                }
+
+                // 按下了绑定的 4 方向击打键
+                if (screenDirection != -1)
+                {
+                    // 🌟 关键修改：传入【屏幕按键方向】和【当前镜头实时角度】进行逆向旋转映射
+                    const float currentAngle = cameraController.getCurrentAngle();
+                    const HitResult result = rhythmLine.onPlayerPressDirection(screenDirection, currentAngle);
+
+                    if (result == HitResult::Perfect)
+                    {
+                        std::cout << "✨ [PERFECT] 绝对方向 " << screenDirection << " 音符完美击切！\n";
+                        lightPulse = 1.0f;
+                    }
+                    else if (result == HitResult::Great)
+                    {
+                        std::cout << "👍 [GREAT] 绝对方向 " << screenDirection << " 音符击切！\n";
+                        lightPulse = 0.6f;
+                    }
+                    else
+                    {
+                        std::cout << "💨 [MISS] 绝对方向 " << screenDirection << " 空击/偏差过大！\n";
+                    }
+                }
             }
         }
 
+        // -------------------------------------------------------------
+        // ⚙️ 逻辑更新 Logical Update
+        // -------------------------------------------------------------
         if (!gameUI.isPaused())
         {
+            // 打击光衰减
             lightPulse = std::max(
                 0.f, lightPulse - safeDeltaTime * lightPulseDecay);
             if (cutLightLoaded)
@@ -210,6 +249,7 @@ int main()
                 cutLight.setBeatPulse(lightPulse);
             }
 
+            // 角色移动与动画
             playerSprite.move({ playerSpeed * safeDeltaTime, 0.f });
 
             if (animationClock.getElapsedTime().asSeconds() >= walkFrameDuration)
@@ -230,6 +270,7 @@ int main()
                 playerBounds.position.x + playerBounds.size.x / 2.f,
                 playerBounds.position.y + playerBounds.size.y / 2.f };
 
+            // 系统轮询更新
             gameMap.update(playerCenter.x);
             lighting.update();
             rhythmBus.update(backgroundMusic);
@@ -238,10 +279,17 @@ int main()
             const float musicTime =
                 backgroundMusic.getPlayingOffset().asSeconds();
 
-            rhythmLine.update(safeDeltaTime, musicTime);
+            // 镜头控制器更新
             cameraController.update(safeDeltaTime, musicTime, playerCenter);
+
+            // 关键同步：同步角度并更新 4 轨道状态
+            rhythmLine.setCameraAngle(cameraController.getCurrentAngle());
+            rhythmLine.update(safeDeltaTime, musicTime);
         }
 
+        // -------------------------------------------------------------
+        // 🎨 渲染绘制 Graphics Rendering
+        // -------------------------------------------------------------
         const sf::View gameView = cameraController.getView();
         window.clear(sf::Color::Black);
 
@@ -251,7 +299,7 @@ int main()
             cutLightStates.shader = &cutLight.shader();
         }
 
-        // 普通天空
+        // 1. 绘制普通天空 (Game World View)
         if (!gameMap.isOutlineMode())
         {
             window.setView(gameView);
@@ -265,11 +313,11 @@ int main()
             }
         }
 
-        // 月亮/红日
+        // 2. 绘制月亮/太阳 (Default UI View 固定视口)
         window.setView(window.getDefaultView());
         lighting.drawMoon(window);
 
-        // Outline Mode 渲染
+        // 3. 绘制场景与建筑 (支持 EdgeJitter 描边抖动模式)
         if (gameMap.isOutlineMode() && edgeJitterLoaded)
         {
             edgeJitter.beginFrame();
@@ -293,15 +341,16 @@ int main()
             }
         }
 
-        // 玩家角色
+        // 4. 绘制玩家角色 (Game World View)
         window.setView(gameView);
         window.draw(playerSprite);
 
-        // 节奏音符绘制
-        window.setView(window.getDefaultView());
+        // 5. 绘制节奏判定线与音符 (使用包含镜头旋转的 gameView，确保视觉同步)
+        window.setView(gameView);
         rhythmLine.draw(window);
 
-        // UI 绘制
+        // 6. 绘制固定的顶部 UI (Default UI View - 固定于屏幕前端)
+        window.setView(window.getDefaultView());
         gameUI.draw(window);
 
         window.display();

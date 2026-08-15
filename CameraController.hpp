@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <SFML/Graphics.hpp>
 
@@ -17,6 +17,9 @@ public:
     void onMusicEvent(const MusicRhythmEvent& event);
 
     [[nodiscard]] const sf::View& getView() const;
+
+    // 🌟 新增：暴露镜头当前的实时旋转角度（角度制）
+    [[nodiscard]] float getCurrentAngle() const { return currentAngle; }
 
 private:
     sf::View camera;
