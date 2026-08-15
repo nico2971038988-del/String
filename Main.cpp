@@ -93,7 +93,7 @@ int main()
     gameUI.setProgressBarSize({ 1000.f, 40.f });
     gameUI.setProgressSliderSize({ 20.f, 20.f });
     //加载字体
-    if (!gameUI.loadFont("Assets/Fonts/brendieroundedregulardemo-yqvl8.otf"))
+    if (!gameUI.loadFont("Assets/Fonts/number.TTF"))
     {
         std::cerr << "Failed to load UI font.\n";
     }

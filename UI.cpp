@@ -7,7 +7,9 @@ UI::UI()
     : progressLineSprite_(progressLineTexture_),
     progressSliderSprite_(progressSliderTexture_),
     pauseText_(font_),
-    judgementText_(font_)
+    judgementText_(font_),
+    scoreText_(font_),
+    comboText_(font_)
 {
 }
 
@@ -53,6 +55,20 @@ bool UI::loadFont(const std::string& fontPath) {
         judgementText_.setStyle(sf::Text::Bold);
         judgementText_.setOutlineColor(sf::Color(92, 58, 25, 230));
         judgementText_.setOutlineThickness(1.5f);
+
+        // 顶部计分 UI，沿用判定文字的暖金配色。
+        scoreText_.setCharacterSize(26);
+        scoreText_.setStyle(sf::Text::Bold);
+        scoreText_.setFillColor(sf::Color(245, 220, 170));
+        scoreText_.setOutlineColor(sf::Color(45, 28, 15, 230));
+        scoreText_.setOutlineThickness(1.5f);
+
+        comboText_.setCharacterSize(26);
+        comboText_.setStyle(sf::Text::Bold);
+        comboText_.setFillColor(sf::Color(255, 232, 170));
+        comboText_.setOutlineColor(sf::Color(45, 28, 15, 230));
+        comboText_.setOutlineThickness(1.5f);
+        refreshScoreText();
         return true;
     }
     fontLoaded_ = false;
@@ -194,7 +210,25 @@ void UI::update() {
     }
 }
 
-void UI::showJudgement(JudgementType judgement) {
+void UI::showJudgement(JudgementType judgement, int count) {
+    count = std::max(1, count);
+
+    // PERFECT +1000，GREAT +600，MISS -300。
+    // 连续命中时，每次额外获得 (Combo - 1) * 25 分，最高 2500 分。
+    for (int i = 0; i < count; ++i) {
+        if (judgement == JudgementType::Miss) {
+            score_ = std::max<std::int64_t>(0, score_ - 300);
+            combo_ = 0;
+        }
+        else {
+            ++combo_;
+            const int baseScore = judgement == JudgementType::Perfect ? 1000 : 600;
+            const int comboBonus = std::min((combo_ - 1) * 25, 2500);
+            score_ += baseScore + comboBonus;
+        }
+    }
+    refreshScoreText();
+
     if (!fontLoaded_) return;
 
     switch (judgement) {
@@ -219,6 +253,30 @@ void UI::showJudgement(JudgementType judgement) {
         });
     judgementVisible_ = true;
     judgementClock_.restart();
+}
+
+void UI::refreshScoreText() {
+    scoreText_.setString("SCORE  " + std::to_string(score_));
+    comboText_.setString("COMBO  " + std::to_string(combo_));
+}
+
+void UI::drawScore(sf::RenderTarget& target) {
+    if (!fontLoaded_) return;
+
+    // Main.cpp 绘制 UI 前已经切换到 DefaultView，直接使用固定屏幕坐标。
+    // 每帧重新写入字符串，保证即使字体稍后才加载也一定有显示内容。
+    refreshScoreText();
+    scoreText_.setOrigin({ 0.f, 0.f });
+    scoreText_.setScale({ 1.f, 1.f });
+    scoreText_.setPosition({ 28.f, 48.f });
+
+    const sf::FloatRect comboBounds = comboText_.getLocalBounds();
+    comboText_.setOrigin({ comboBounds.position.x + comboBounds.size.x, 0.f });
+    comboText_.setScale({ 1.f, 1.f });
+    comboText_.setPosition({ 1252.f, 48.f });
+
+    target.draw(scoreText_);
+    target.draw(comboText_);
 }
 
 void UI::drawJudgement(sf::RenderTarget& target) {
@@ -299,7 +357,10 @@ void UI::draw(sf::RenderTarget& target) {
     // 2. 绘制屏幕下方的判定提示。
     drawJudgement(target);
 
-    // 3. 若处于暂停状态，绘制暂停 UI Overlay
+    // 3. 最后绘制顶部总分与 Combo，防止被其他 UI 覆盖。
+    drawScore(target);
+
+    // 4. 若处于暂停状态，绘制暂停 UI Overlay
     if (isPaused_) {
         drawPauseOverlay(target);
     }

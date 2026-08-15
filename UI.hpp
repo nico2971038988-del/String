@@ -3,26 +3,24 @@
 #include <SFML/Audio/Music.hpp>
 #include <SFML/Graphics.hpp>
 
+#include <cstdint>
 #include <string>
 
-enum class JudgementType {
+enum class JudgementType
+{
     Perfect,
     Great,
     Miss
 };
 
-// 游戏屏幕 UI 的统一入口。
-// 包含音频进度条、暂停控制以及暂停 UI Overlay 渲染。
-class UI {
+class UI
+{
 public:
     UI();
 
     bool loadProgressBar(
         const std::string& lineTexturePath,
-        const std::string& sliderTexturePath
-    );
-
-    // 可选：加载用于 Pause 界面的字体
+        const std::string& sliderTexturePath);
     bool loadFont(const std::string& fontPath);
 
     void bindMusic(sf::Music& music);
@@ -33,12 +31,16 @@ public:
     void handleEvent(const sf::Event& event, const sf::RenderWindow& window);
     void update();
     void draw(sf::RenderTarget& target);
-    void showJudgement(JudgementType judgement);
+
+    // 显示判定并结算分数；count 可用于一次结算多个超时 Miss。
+    void showJudgement(JudgementType judgement, int count = 1);
+
+    std::int64_t score() const { return score_; }
+    int combo() const { return combo_; }
 
     float musicProgress() const;
     bool isProgressBarDragging() const { return progressBarDragging_; }
 
-    // --- 暂停功能接口 ---
     void togglePause();
     void pause();
     void resume();
@@ -50,9 +52,10 @@ private:
     void seekMusic(float normalizedProgress);
     void updateProgressSlider(float normalizedProgress);
 
-    // 绘制暂停界面 overlay
     void drawPauseOverlay(sf::RenderTarget& target);
     void drawJudgement(sf::RenderTarget& target);
+    void drawScore(sf::RenderTarget& target);
+    void refreshScoreText();
 
     sf::Texture progressLineTexture_;
     sf::Texture progressSliderTexture_;
@@ -63,10 +66,16 @@ private:
     bool fontLoaded_ = false;
     sf::Text pauseText_;
     sf::Text judgementText_;
+    sf::Text scoreText_;
+    sf::Text comboText_;
+
     sf::Clock judgementClock_;
     bool judgementVisible_ = false;
     sf::Color judgementBaseColor_{ sf::Color::White };
     float judgementDuration_ = 0.65f;
+
+    std::int64_t score_ = 0;
+    int combo_ = 0;
 
     sf::Music* music_ = nullptr;
     sf::Vector2f progressBarPosition_{ 0.f, 0.f };
@@ -74,6 +83,5 @@ private:
     bool progressBarLoaded_ = false;
     bool progressBarDragging_ = false;
 
-    // 暂停状态标志
     bool isPaused_ = false;
 };
