@@ -1,7 +1,11 @@
 ﻿#include "UI.hpp"
 
+// 完整 UI 实现：与 UI_final.hpp 配套使用。
+
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
+#include <sstream>
 
 UI::UI()
     : progressLineSprite_(progressLineTexture_),
@@ -9,7 +13,11 @@ UI::UI()
     pauseText_(font_),
     judgementText_(font_),
     scoreText_(font_),
-    comboText_(font_)
+    comboText_(font_),
+    resultTitleText_(font_),
+    resultSongText_(font_),
+    resultScoreText_(font_),
+    resultTimeText_(font_)
 {
 }
 
@@ -68,6 +76,20 @@ bool UI::loadFont(const std::string& fontPath) {
         comboText_.setFillColor(sf::Color(255, 232, 170));
         comboText_.setOutlineColor(sf::Color(45, 28, 15, 230));
         comboText_.setOutlineThickness(1.5f);
+
+        resultTitleText_.setCharacterSize(58);
+        resultTitleText_.setStyle(sf::Text::Bold);
+        resultTitleText_.setFillColor(sf::Color(255, 232, 170));
+        resultTitleText_.setOutlineColor(sf::Color(45, 28, 15, 245));
+        resultTitleText_.setOutlineThickness(2.f);
+
+        resultSongText_.setCharacterSize(28);
+        resultSongText_.setFillColor(sf::Color(245, 220, 170));
+        resultScoreText_.setCharacterSize(38);
+        resultScoreText_.setStyle(sf::Text::Bold);
+        resultScoreText_.setFillColor(sf::Color(255, 232, 170));
+        resultTimeText_.setCharacterSize(28);
+        resultTimeText_.setFillColor(sf::Color(225, 196, 140));
         refreshScoreText();
         return true;
     }
@@ -77,7 +99,14 @@ bool UI::loadFont(const std::string& fontPath) {
 
 void UI::bindMusic(sf::Music& music) {
     music_ = &music;
+    musicHasStarted_ = false;
+    resultVisible_ = false;
+    furthestMusicOffset_ = 0.f;
     update();
+}
+
+void UI::setSongName(const std::string& songName) {
+    songName_ = songName.empty() ? "UNKNOWN SONG" : songName;
 }
 
 void UI::setProgressBarPosition(const sf::Vector2f& position) {
@@ -208,6 +237,25 @@ void UI::update() {
     if (!progressBarDragging_) {
         updateProgressSlider(musicProgress());
     }
+
+    if (music_ == nullptr || resultVisible_) return;
+
+    const auto status = music_->getStatus();
+    if (status == sf::SoundSource::Status::Playing) {
+        musicHasStarted_ = true;
+    }
+
+    // 仅在音乐确实播放过并自然到达末尾时显示结算，暂停不会触发。
+    const float duration = music_->getDuration().asSeconds();
+    const float offset = music_->getPlayingOffset().asSeconds();
+    furthestMusicOffset_ = std::max(furthestMusicOffset_, offset);
+    if (musicHasStarted_ &&
+        status == sf::SoundSource::Status::Stopped &&
+        duration > 0.f &&
+        std::max(offset, furthestMusicOffset_) >= duration - 0.25f) {
+        resultVisible_ = true;
+        judgementVisible_ = false;
+    }
 }
 
 void UI::showJudgement(JudgementType judgement, int count) {
@@ -277,6 +325,59 @@ void UI::drawScore(sf::RenderTarget& target) {
 
     target.draw(scoreText_);
     target.draw(comboText_);
+}
+
+std::string UI::formatTime(float seconds) {
+    const int totalSeconds = std::max(0, static_cast<int>(std::round(seconds)));
+    const int minutes = totalSeconds / 60;
+    const int remainingSeconds = totalSeconds % 60;
+
+    std::ostringstream stream;
+    stream << std::setfill('0') << std::setw(2) << minutes
+        << ':' << std::setw(2) << remainingSeconds;
+    return stream.str();
+}
+
+void UI::drawResultScreen(sf::RenderTarget& target) {
+    if (!fontLoaded_ || !resultVisible_ || music_ == nullptr) return;
+
+    const sf::View& view = target.getView();
+    const sf::Vector2f viewSize = view.getSize();
+    const sf::Vector2f center = view.getCenter();
+
+    sf::RectangleShape dimmer(viewSize);
+    dimmer.setPosition(center - viewSize * 0.5f);
+    dimmer.setFillColor(sf::Color(8, 5, 3, 220));
+    target.draw(dimmer);
+
+    sf::RectangleShape panel({ 680.f, 410.f });
+    panel.setOrigin({ 340.f, 205.f });
+    panel.setPosition(center);
+    panel.setFillColor(sf::Color(30, 20, 12, 235));
+    panel.setOutlineColor(sf::Color(245, 220, 170, 210));
+    panel.setOutlineThickness(2.f);
+    target.draw(panel);
+
+    resultTitleText_.setString("RESULT");
+    resultSongText_.setString("SONG  " + songName_);
+    resultScoreText_.setString("SCORE  " + std::to_string(score_));
+    resultTimeText_.setString(
+        "TIME  " + formatTime(music_->getDuration().asSeconds()));
+
+    auto centerText = [&target, center](sf::Text& text, float y) {
+        const sf::FloatRect bounds = text.getLocalBounds();
+        text.setOrigin({
+            bounds.position.x + bounds.size.x * 0.5f,
+            bounds.position.y + bounds.size.y * 0.5f
+            });
+        text.setPosition({ center.x, center.y + y });
+        target.draw(text);
+        };
+
+    centerText(resultTitleText_, -135.f);
+    centerText(resultSongText_, -45.f);
+    centerText(resultScoreText_, 35.f);
+    centerText(resultTimeText_, 110.f);
 }
 
 void UI::drawJudgement(sf::RenderTarget& target) {
@@ -364,6 +465,9 @@ void UI::draw(sf::RenderTarget& target) {
     if (isPaused_) {
         drawPauseOverlay(target);
     }
+
+    // 5. 音乐自然结束后，结算页最后绘制在所有内容上方。
+    drawResultScreen(target);
 }
 
 float UI::musicProgress() const {

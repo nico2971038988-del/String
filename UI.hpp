@@ -1,5 +1,7 @@
 #pragma once
 
+// 完整 UI 接口：本文件必须在工程中命名为 UI.hpp。
+
 #include <SFML/Audio/Music.hpp>
 #include <SFML/Graphics.hpp>
 
@@ -24,6 +26,7 @@ public:
     bool loadFont(const std::string& fontPath);
 
     void bindMusic(sf::Music& music);
+    void setSongName(const std::string& songName);
     void setProgressBarPosition(const sf::Vector2f& position);
     void setProgressBarSize(const sf::Vector2f& size);
     void setProgressSliderSize(const sf::Vector2f& size);
@@ -37,6 +40,7 @@ public:
 
     std::int64_t score() const { return score_; }
     int combo() const { return combo_; }
+    bool isResultVisible() const { return resultVisible_; }
 
     float musicProgress() const;
     bool isProgressBarDragging() const { return progressBarDragging_; }
@@ -55,7 +59,9 @@ private:
     void drawPauseOverlay(sf::RenderTarget& target);
     void drawJudgement(sf::RenderTarget& target);
     void drawScore(sf::RenderTarget& target);
+    void drawResultScreen(sf::RenderTarget& target);
     void refreshScoreText();
+    static std::string formatTime(float seconds);
 
     sf::Texture progressLineTexture_;
     sf::Texture progressSliderTexture_;
@@ -68,6 +74,10 @@ private:
     sf::Text judgementText_;
     sf::Text scoreText_;
     sf::Text comboText_;
+    sf::Text resultTitleText_;
+    sf::Text resultSongText_;
+    sf::Text resultScoreText_;
+    sf::Text resultTimeText_;
 
     sf::Clock judgementClock_;
     bool judgementVisible_ = false;
@@ -76,6 +86,11 @@ private:
 
     std::int64_t score_ = 0;
     int combo_ = 0;
+
+    std::string songName_{ "UNKNOWN SONG" };
+    bool musicHasStarted_ = false;
+    bool resultVisible_ = false;
+    float furthestMusicOffset_ = 0.f;
 
     sf::Music* music_ = nullptr;
     sf::Vector2f progressBarPosition_{ 0.f, 0.f };

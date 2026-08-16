@@ -89,6 +89,8 @@ int main()
     }
 
     gameUI.bindMusic(backgroundMusic);
+    // 结算页面显示的曲目名称；更换音乐时修改这里即可。
+    gameUI.setSongName("XuYu");
     gameUI.setProgressBarPosition({ 100.f, -5.f });
     gameUI.setProgressBarSize({ 1000.f, 40.f });
     gameUI.setProgressSliderSize({ 20.f, 20.f });
@@ -317,7 +319,7 @@ int main()
             const int timeoutMissCount = rhythmLine.consumeMissCount();
             if (timeoutMissCount > 0)
             {
-                gameUI.showJudgement(JudgementType::Miss);
+                gameUI.showJudgement(JudgementType::Miss, timeoutMissCount);
                 lightPulse = std::max(lightPulse, 0.18f);
                 std::cout << "💨 [MISS] " << timeoutMissCount
                     << " 个音符未击中！\n";
